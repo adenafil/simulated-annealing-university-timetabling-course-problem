@@ -1,10 +1,16 @@
 /**
  * ==========================================
- * SIMULATED ANNEALING FOR UTCP - ENHANCED VERSION
+ * SIMULATED ANNEALING FOR UTCP - ENHANCED VERSION V2
  * University Timetabling with Course Scheduling Problem
  * ==========================================
  *
- * NEW FEATURES:
+ * NEW FEATURES V2:
+ * - Overflow handling: Non-lab classes can use lab rooms when non-lab rooms are full
+ * - Evening class optimization: Prioritize earlier start times (avoid 19:30)
+ * - Exclusive room constraint: G5-LabAudioVisual only for "Fotografi Dasar" (DKV)
+ * - Smart room allocation with priority system
+ *
+ * PREVIOUS FEATURES:
  * - Friday time restrictions (no start at 11:00, 12:00, 13:00)
  * - Prayer time handling (automatic duration extension)
  * - Evening class priority (18:30 first, then 15:30 if full)
@@ -18,7 +24,7 @@ interface Room {
     Capacity: number;
 }
 interface Lecturer {
-    'Prodi Code': string;
+    "Prodi Code": string;
     Code: string;
     Name: string;
     Prefered_Time: string;
@@ -61,6 +67,7 @@ interface ScheduleEntry {
     participants: number;
     classType: string;
     prayerTimeAdded: number;
+    isOverflowToLab?: boolean;
 }
 interface Solution {
     schedule: ScheduleEntry[];
@@ -85,7 +92,7 @@ interface ConstraintViolation {
     className: string;
     constraintType: string;
     reason: string;
-    severity: 'hard' | 'soft';
+    severity: "hard" | "soft";
     details?: any;
 }
 declare function loadData(filepath: string): {
@@ -114,7 +121,7 @@ declare class ConstraintChecker {
      */
     checkRoomCapacity(entry: ScheduleEntry): boolean;
     /**
-     * HC4: Lab requirement (NOW SOFT - can fallback to non-lab)
+     * HC4: Lab requirement (SOFT - can fallback with penalty)
      */
     checkLabRequirement(entry: ScheduleEntry): number;
     /**
@@ -130,7 +137,7 @@ declare class ConstraintChecker {
      */
     checkMaxDailyPeriods(schedule: ScheduleEntry[], entry: ScheduleEntry): boolean;
     /**
-     * HC8: Class type time
+     * HC8: Class type time (MODIFIED - stricter evening class timing)
      */
     checkClassTypeTime(entry: ScheduleEntry): boolean;
     /**
@@ -138,13 +145,17 @@ declare class ConstraintChecker {
      */
     checkSaturdayRestriction(entry: ScheduleEntry): boolean;
     /**
-     * HC10: Friday time restriction (NEW)
+     * HC10: Friday time restriction
      */
     checkFridayTimeRestriction(entry: ScheduleEntry): boolean;
     /**
-     * HC11: Not starting during prayer time (NEW)
+     * HC11: Not starting during prayer time
      */
     checkNotStartingDuringPrayerTime(entry: ScheduleEntry): boolean;
+    /**
+     * HC12: Exclusive room constraint - NEW
+     */
+    checkExclusiveRoomConstraint(entry: ScheduleEntry): boolean;
     /**
      * Helper: Check time overlap considering actual durations with prayer time
      */
@@ -166,13 +177,17 @@ declare class ConstraintChecker {
      */
     checkCompactness(schedule: ScheduleEntry[], entry: ScheduleEntry): number;
     /**
-     * SC5: Avoid prayer time overlap (NEW - soft constraint)
+     * SC5: Avoid prayer time overlap
      */
     checkPrayerTimeOverlap(entry: ScheduleEntry): number;
     /**
-     * SC6: Evening class priority (18:30 preferred over 15:30) (NEW)
+     * SC6: Evening class priority - MODIFIED: Penalize late starts (19:30)
      */
     checkEveningClassPriority(entry: ScheduleEntry): number;
+    /**
+     * SC7: Overflow penalty - NEW: Penalize non-lab classes using lab rooms
+     */
+    checkOverflowPenalty(entry: ScheduleEntry): number;
 }
 declare class SimulatedAnnealing {
     private rooms;
@@ -187,7 +202,7 @@ declare class SimulatedAnnealing {
     private softConstraintWeights;
     constructor(rooms: Room[], lecturers: Lecturer[], classes: ClassRequirement[]);
     /**
-     * Generate initial solution
+     * Generate initial solution with smart room allocation
      */
     private generateInitialSolution;
     /**

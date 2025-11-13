@@ -1,11 +1,17 @@
 "use strict";
 /**
  * ==========================================
- * SIMULATED ANNEALING FOR UTCP - ENHANCED VERSION
+ * SIMULATED ANNEALING FOR UTCP - ENHANCED VERSION V2
  * University Timetabling with Course Scheduling Problem
  * ==========================================
  *
- * NEW FEATURES:
+ * NEW FEATURES V2:
+ * - Overflow handling: Non-lab classes can use lab rooms when non-lab rooms are full
+ * - Evening class optimization: Prioritize earlier start times (avoid 19:30)
+ * - Exclusive room constraint: G5-LabAudioVisual only for "Fotografi Dasar" (DKV)
+ * - Smart room allocation with priority system
+ *
+ * PREVIOUS FEATURES:
  * - Friday time restrictions (no start at 11:00, 12:00, 13:00)
  * - Prayer time handling (automatic duration extension)
  * - Evening class priority (18:30 first, then 15:30 if full)
@@ -56,23 +62,52 @@ const XLSX = __importStar(require("xlsx"));
 // ============================================
 // CONSTANTS
 // ============================================
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 // Prayer times (in minutes from midnight for easier calculation)
 const PRAYER_TIMES = {
     DZUHUR: { start: 11 * 60 + 40, end: 12 * 60 + 30, duration: 50 }, // 11:40-12:30
     ASHAR: { start: 15 * 60, end: 15 * 60 + 30, duration: 30 }, // 15:00-15:30
-    MAGHRIB: { start: 18 * 60, end: 18 * 60 + 30, duration: 30 } // 18:00-18:30
+    MAGHRIB: { start: 18 * 60, end: 18 * 60 + 30, duration: 30 }, // 18:00-18:30
 };
 // Lab rooms
-const LAB_ROOMS = ['CM-206', 'CM-207', 'CM-LabVirtual', 'CM-Lab3', 'G5-Lab1', 'G5-Lab2', 'G5-LabAudioVisual'];
-// Non-lab rooms (fallback for lab classes)
+const LAB_ROOMS = ["CM-206", "CM-207", "CM-LabVirtual", "CM-Lab3", "G5-Lab1", "G5-Lab2", "G5-LabAudioVisual"];
+// Non-lab rooms (primary rooms for regular classes)
 const NON_LAB_ROOMS = [
-    'B2-R1', 'B3-R1', 'B3-R2', 'B3R3', 'CM-101', 'CM-102', 'CM-103',
-    'CM-201', 'CM-202', 'CM-203', 'CM-204', 'CM-205', 'CM-208',
-    'G2-R2', 'G2-R3', 'G2-R4', 'G2-R5', 'G2-R6', 'G2-R7',
-    'G3-R1', 'G3-R2', 'G3-R3', 'G3-R4',
-    'G4-R1', 'G4-R2', 'G4-R3', 'G4-R4'
+    "B2-R1",
+    "B3-R1",
+    "B3-R2",
+    "B3R3",
+    "CM-101",
+    "CM-102",
+    "CM-103",
+    "CM-201",
+    "CM-202",
+    "CM-203",
+    "CM-204",
+    "CM-205",
+    "CM-208",
+    "G2-R2",
+    "G2-R3",
+    "G2-R4",
+    "G2-R5",
+    "G2-R6",
+    "G2-R7",
+    "G3-R1",
+    "G3-R2",
+    "G3-R3",
+    "G3-R4",
+    "G4-R1",
+    "G4-R2",
+    "G4-R3",
+    "G4-R4",
 ];
+// Exclusive room assignments - NEW
+const EXCLUSIVE_ROOMS = {
+    "G5-LabAudioVisual": {
+        courses: ["Fotografi Dasar"],
+        prodi: "DKV",
+    },
+};
 const TIME_SLOTS_PAGI = [];
 const TIME_SLOTS_SORE = [];
 const TIME_SLOTS = [];
@@ -82,7 +117,7 @@ for (let day of DAYS) {
     let minute = 30;
     let period = 1;
     while (hour < 17 || (hour === 17 && minute === 0)) {
-        const startTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        const startTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
         // Add 50 minutes for class period
         let endHour = hour;
         let endMinute = minute + 50;
@@ -90,7 +125,7 @@ for (let day of DAYS) {
             endHour += Math.floor(endMinute / 60);
             endMinute = endMinute % 60;
         }
-        const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
+        const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
         const slot = { day, startTime, endTime, period };
         TIME_SLOTS_PAGI.push(slot);
         TIME_SLOTS.push(slot);
@@ -106,13 +141,13 @@ for (let day of DAYS) {
         period++;
     }
 }
-// Generate time slots for SORE (18:30 - 21:00)
+// Generate time slots for SORE (15:30 - 21:00) - NEW: Start from 15:30 for flexibility
 for (let day of DAYS) {
-    let hour = 18;
+    let hour = 15;
     let minute = 30;
     let period = 1;
     while (hour < 21 || (hour === 21 && minute === 0)) {
-        const startTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        const startTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
         // Add 50 minutes for class period
         let endHour = hour;
         let endMinute = minute + 50;
@@ -124,10 +159,13 @@ for (let day of DAYS) {
         if (endHour > 21 || (endHour === 21 && endMinute > 0)) {
             break;
         }
-        const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
+        const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
         const slot = { day, startTime, endTime, period };
         TIME_SLOTS_SORE.push(slot);
-        TIME_SLOTS.push(slot);
+        // Only add to TIME_SLOTS if >= 18:30 (avoid duplicate with PAGI)
+        if (hour >= 18 || (hour === 18 && minute >= 30)) {
+            TIME_SLOTS.push(slot);
+        }
         // Add 10 minutes break
         minute = endMinute + 10;
         if (minute >= 60) {
@@ -147,7 +185,7 @@ for (let day of DAYS) {
  * Convert time string to minutes from midnight
  */
 function timeToMinutes(time) {
-    const [hour, minute] = time.split(':').map(Number);
+    const [hour, minute] = time.split(":").map(Number);
     return hour * 60 + minute;
 }
 /**
@@ -156,28 +194,26 @@ function timeToMinutes(time) {
 function minutesToTime(minutes) {
     const hour = Math.floor(minutes / 60);
     const minute = minutes % 60;
-    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
 }
 /**
  * Check if a time range overlaps with prayer time
  * Returns the prayer time duration to add (0 if no overlap)
  */
 function getPrayerTimeOverlap(startTime, sks, day) {
-    // Saturday has no dzuhur/ashar restrictions in this implementation
-    // but still has maghrib
     const startMinutes = timeToMinutes(startTime);
     const classMinutes = sks * 50 + (sks - 1) * 10; // without prayer time
     const endMinutes = startMinutes + classMinutes;
     let totalPrayerTime = 0;
-    // Check Dzuhur (11:40-12:30) - 50 minutes - All days except check
+    // Check Dzuhur (11:40-12:30) - 50 minutes
     if (startMinutes < PRAYER_TIMES.DZUHUR.end && endMinutes > PRAYER_TIMES.DZUHUR.start) {
         totalPrayerTime += PRAYER_TIMES.DZUHUR.duration;
     }
-    // Check Ashar (15:00-15:30) - 30 minutes - All days
+    // Check Ashar (15:00-15:30) - 30 minutes
     if (startMinutes < PRAYER_TIMES.ASHAR.end && endMinutes > PRAYER_TIMES.ASHAR.start) {
         totalPrayerTime += PRAYER_TIMES.ASHAR.duration;
     }
-    // Check Maghrib (18:00-18:30) - 30 minutes - All days
+    // Check Maghrib (18:00-18:30) - 30 minutes
     if (startMinutes < PRAYER_TIMES.MAGHRIB.end && endMinutes > PRAYER_TIMES.MAGHRIB.start) {
         totalPrayerTime += PRAYER_TIMES.MAGHRIB.duration;
     }
@@ -197,14 +233,14 @@ function calculateEndTime(startTime, sks, day) {
     const endMinutes = startMinutes + totalMinutes;
     return {
         endTime: minutesToTime(endMinutes),
-        prayerTimeAdded
+        prayerTimeAdded,
     };
 }
 /**
  * Check if a start time is valid for Friday
  */
 function isValidFridayStartTime(startTime) {
-    const hour = parseInt(startTime.split(':')[0]);
+    const hour = parseInt(startTime.split(":")[0]);
     // Cannot start at 11:00, 12:00, or 13:00
     return !(hour === 11 || hour === 12 || hour === 13);
 }
@@ -225,14 +261,141 @@ function isStartingDuringPrayerTime(startTime) {
     }
     return false;
 }
+/**
+ * Check if a class can use exclusive room - NEW
+ */
+function canUseExclusiveRoom(roomCode, courseName, prodi) {
+    const exclusiveConfig = EXCLUSIVE_ROOMS[roomCode];
+    if (!exclusiveConfig)
+        return true; // Not an exclusive room
+    // Check if course matches
+    const courseMatch = exclusiveConfig.courses.some((c) => courseName.toLowerCase().includes(c.toLowerCase()));
+    // Check if prodi matches (if specified)
+    const prodiMatch = !exclusiveConfig.prodi || prodi.toLowerCase().includes(exclusiveConfig.prodi.toLowerCase());
+    return courseMatch && prodiMatch;
+}
+/**
+ * Check if room is available at given time - NEW
+ */
+function isRoomAvailable(schedule, room, timeSlot, sks) {
+    for (const entry of schedule) {
+        if (entry.room !== room)
+            continue;
+        if (entry.timeSlot.day !== timeSlot.day)
+            continue;
+        const calc1 = calculateEndTime(entry.timeSlot.startTime, entry.sks, entry.timeSlot.day);
+        const calc2 = calculateEndTime(timeSlot.startTime, sks, timeSlot.day);
+        const start1 = timeToMinutes(entry.timeSlot.startTime);
+        const end1 = timeToMinutes(calc1.endTime);
+        const start2 = timeToMinutes(timeSlot.startTime);
+        const end2 = timeToMinutes(calc2.endTime);
+        if (start1 < end2 && start2 < end1) {
+            return false; // Overlap found
+        }
+    }
+    return true; // Room is available
+}
+/**
+ * Get available rooms with smart allocation - NEW
+ */
+function getAvailableRooms(allRooms, schedule, classReq, timeSlot, participants, needsLab, courseName, prodi) {
+    const sks = classReq.SKS || 3;
+    // Priority 1: Check if exclusive room requirement
+    for (const [roomCode, config] of Object.entries(EXCLUSIVE_ROOMS)) {
+        if (canUseExclusiveRoom(roomCode, courseName, prodi)) {
+            const room = allRooms.find((r) => r.Code === roomCode);
+            if (room && room.Capacity >= participants) {
+                if (isRoomAvailable(schedule, roomCode, timeSlot, sks)) {
+                    return [roomCode]; // Exclusive match
+                }
+            }
+        }
+    }
+    // Get room capacity requirements
+    let roomCodes = [];
+    // Priority 2: Check specific rooms from class requirement
+    if (classReq.rooms) {
+        roomCodes = classReq.rooms
+            .split(",")
+            .map((r) => r.trim())
+            .filter((r) => {
+            const room = allRooms.find((room) => room.Code === r);
+            if (!room || room.Capacity < participants)
+                return false;
+            // Check if room is available at this time
+            return isRoomAvailable(schedule, r, timeSlot, sks);
+        });
+    }
+    if (roomCodes.length > 0)
+        return roomCodes;
+    // Priority 3: For lab classes, get lab rooms first
+    if (needsLab) {
+        roomCodes = allRooms
+            .filter((r) => {
+            if (!LAB_ROOMS.includes(r.Code))
+                return false;
+            if (r.Capacity < participants)
+                return false;
+            // Skip exclusive rooms that don't match
+            if (!canUseExclusiveRoom(r.Code, courseName, prodi))
+                return false;
+            // Check availability
+            return isRoomAvailable(schedule, r.Code, timeSlot, sks);
+        })
+            .map((r) => r.Code);
+        if (roomCodes.length > 0)
+            return roomCodes;
+    }
+    // Priority 4: For non-lab classes, get non-lab rooms
+    if (!needsLab) {
+        roomCodes = allRooms
+            .filter((r) => {
+            if (!NON_LAB_ROOMS.includes(r.Code))
+                return false;
+            if (r.Capacity < participants)
+                return false;
+            // Check availability
+            return isRoomAvailable(schedule, r.Code, timeSlot, sks);
+        })
+            .map((r) => r.Code);
+        if (roomCodes.length > 0)
+            return roomCodes;
+        // Priority 5: OVERFLOW - Non-lab classes can use lab rooms if non-lab rooms are full
+        roomCodes = allRooms
+            .filter((r) => {
+            if (!LAB_ROOMS.includes(r.Code))
+                return false;
+            if (r.Capacity < participants)
+                return false;
+            // Skip exclusive rooms that don't match
+            if (!canUseExclusiveRoom(r.Code, courseName, prodi))
+                return false;
+            // Check availability
+            return isRoomAvailable(schedule, r.Code, timeSlot, sks);
+        })
+            .map((r) => r.Code);
+        return roomCodes; // May use lab as overflow
+    }
+    // Priority 6: Last resort - any available room with capacity
+    roomCodes = allRooms
+        .filter((r) => {
+        if (r.Capacity < participants)
+            return false;
+        if (!canUseExclusiveRoom(r.Code, courseName, prodi))
+            return false;
+        return isRoomAvailable(schedule, r.Code, timeSlot, sks);
+    })
+        .map((r) => r.Code);
+    return roomCodes;
+}
 // ============================================
 // DATA LOADING
 // ============================================
 function loadData(filepath) {
     const workbook = XLSX.readFile(filepath);
-    const roomsSheet = workbook.Sheets['ruangan'];
-    const lecturersSheet = workbook.Sheets['dosen'];
-    const classesSheet = workbook.Sheets['kebutuhan_kelas'];
+    const roomsSheet = workbook.Sheets["ruangan"];
+    const lecturersSheet = workbook.Sheets["dosen"];
+    const classesSheet = workbook.Sheets["kebutuhan_kelas"];
     const rooms = XLSX.utils.sheet_to_json(roomsSheet);
     const lecturers = XLSX.utils.sheet_to_json(lecturersSheet);
     const classes = XLSX.utils.sheet_to_json(classesSheet);
@@ -246,8 +409,8 @@ class ConstraintChecker {
     lecturers;
     violations = [];
     constructor(rooms, lecturers) {
-        this.rooms = new Map(rooms.map(r => [r.Code, r]));
-        this.lecturers = new Map(lecturers.map(l => [l.Code, l]));
+        this.rooms = new Map(rooms.map((r) => [r.Code, r]));
+        this.lecturers = new Map(lecturers.map((l) => [l.Code, l]));
     }
     resetViolations() {
         this.violations = [];
@@ -272,10 +435,10 @@ class ConstraintChecker {
                         this.addViolation({
                             classId: entry.classId,
                             className: entry.className,
-                            constraintType: 'HC1: Lecturer Conflict',
+                            constraintType: "HC1: Lecturer Conflict",
                             reason: `Lecturer ${lecturer} has conflict with class ${existing.classId} on ${entry.timeSlot.day} at ${entry.timeSlot.startTime}`,
-                            severity: 'hard',
-                            details: { conflictsWith: existing.classId, lecturer }
+                            severity: "hard",
+                            details: { conflictsWith: existing.classId, lecturer },
                         });
                         return false;
                     }
@@ -293,10 +456,10 @@ class ConstraintChecker {
                 this.addViolation({
                     classId: entry.classId,
                     className: entry.className,
-                    constraintType: 'HC2: Room Conflict',
+                    constraintType: "HC2: Room Conflict",
                     reason: `Room ${entry.room} is already occupied by class ${existing.classId} on ${entry.timeSlot.day} at ${entry.timeSlot.startTime}`,
-                    severity: 'hard',
-                    details: { conflictsWith: existing.classId, room: entry.room }
+                    severity: "hard",
+                    details: { conflictsWith: existing.classId, room: entry.room },
                 });
                 return false;
             }
@@ -312,9 +475,9 @@ class ConstraintChecker {
             this.addViolation({
                 classId: entry.classId,
                 className: entry.className,
-                constraintType: 'HC3: Room Capacity',
+                constraintType: "HC3: Room Capacity",
                 reason: `Room ${entry.room} not found`,
-                severity: 'hard'
+                severity: "hard",
             });
             return false;
         }
@@ -322,30 +485,36 @@ class ConstraintChecker {
             this.addViolation({
                 classId: entry.classId,
                 className: entry.className,
-                constraintType: 'HC3: Room Capacity',
+                constraintType: "HC3: Room Capacity",
                 reason: `Room ${entry.room} capacity (${room.Capacity}) is less than participants (${entry.participants})`,
-                severity: 'hard',
-                details: { roomCapacity: room.Capacity, participants: entry.participants }
+                severity: "hard",
+                details: { roomCapacity: room.Capacity, participants: entry.participants },
             });
             return false;
         }
         return true;
     }
     /**
-     * HC4: Lab requirement (NOW SOFT - can fallback to non-lab)
+     * HC4: Lab requirement (SOFT - can fallback with penalty)
      */
     checkLabRequirement(entry) {
-        if (!entry.needsLab)
-            return 1; // No lab needed, perfect
+        if (!entry.needsLab) {
+            // Non-lab class
+            if (LAB_ROOMS.includes(entry.room)) {
+                // Using lab room for non-lab class (overflow scenario)
+                return 0.7; // Small penalty but acceptable
+            }
+            return 1; // Perfect - non-lab in non-lab room
+        }
         const room = this.rooms.get(entry.room);
         if (!room)
             return 0;
-        // Check if it's a lab room
-        if (room.Type.toLowerCase().includes('lab') || LAB_ROOMS.includes(room.Code)) {
+        // Lab class - check if it's in lab room
+        if (room.Type.toLowerCase().includes("lab") || LAB_ROOMS.includes(room.Code)) {
             return 1; // Perfect! Lab class in lab room
         }
-        // Not in lab room - soft violation
-        return 0.5; // Penalty for not being in preferred lab
+        // Lab class not in lab room - bigger penalty
+        return 0.3;
     }
     /**
      * HC5: No class conflict same prodi
@@ -356,10 +525,10 @@ class ConstraintChecker {
                 this.addViolation({
                     classId: entry.classId,
                     className: entry.className,
-                    constraintType: 'HC5: Prodi Conflict',
+                    constraintType: "HC5: Prodi Conflict",
                     reason: `Same program (${entry.prodi}) has class ${existing.classId} at the same time on ${entry.timeSlot.day}`,
-                    severity: 'hard',
-                    details: { conflictsWith: existing.classId, prodi: entry.prodi }
+                    severity: "hard",
+                    details: { conflictsWith: existing.classId, prodi: entry.prodi },
                 });
                 return false;
             }
@@ -378,10 +547,10 @@ class ConstraintChecker {
                     this.addViolation({
                         classId: entry.classId,
                         className: entry.className,
-                        constraintType: 'HC6: Research Day',
+                        constraintType: "HC6: Research Day",
                         reason: `Lecturer ${lecturerCode} has research day on ${researchDay}`,
-                        severity: 'hard',
-                        details: { lecturer: lecturerCode, researchDay }
+                        severity: "hard",
+                        details: { lecturer: lecturerCode, researchDay },
                     });
                     return false;
                 }
@@ -399,8 +568,7 @@ class ConstraintChecker {
                 continue;
             let periodsCount = 0;
             for (const existing of schedule) {
-                if (existing.timeSlot.day === entry.timeSlot.day &&
-                    existing.lecturers.includes(lecturerCode)) {
+                if (existing.timeSlot.day === entry.timeSlot.day && existing.lecturers.includes(lecturerCode)) {
                     periodsCount += existing.sks;
                 }
             }
@@ -409,10 +577,10 @@ class ConstraintChecker {
                 this.addViolation({
                     classId: entry.classId,
                     className: entry.className,
-                    constraintType: 'HC7: Max Daily Periods',
+                    constraintType: "HC7: Max Daily Periods",
                     reason: `Lecturer ${lecturerCode} exceeds max daily periods (${lecturer.Max_Daily_Periods}) on ${entry.timeSlot.day}`,
-                    severity: 'hard',
-                    details: { lecturer: lecturerCode, periods: periodsCount, max: lecturer.Max_Daily_Periods }
+                    severity: "hard",
+                    details: { lecturer: lecturerCode, periods: periodsCount, max: lecturer.Max_Daily_Periods },
                 });
                 return false;
             }
@@ -420,19 +588,22 @@ class ConstraintChecker {
         return true;
     }
     /**
-     * HC8: Class type time
+     * HC8: Class type time (MODIFIED - stricter evening class timing)
      */
     checkClassTypeTime(entry) {
-        const hour = parseInt(entry.timeSlot.startTime.split(':')[0]);
-        if (entry.classType === 'sore') {
-            // Evening classes should start at 18:30 or later (or 15:30+ if 18:30 slots are full)
-            if (hour < 15) {
+        const hour = parseInt(entry.timeSlot.startTime.split(":")[0]);
+        const minute = parseInt(entry.timeSlot.startTime.split(":")[1]);
+        const startMinutes = hour * 60 + minute;
+        if (entry.classType === "sore") {
+            // Evening classes: prefer 15:30-18:30, allow up to 19:30 with penalty
+            if (startMinutes < 15 * 60 + 30) {
+                // Too early for evening class
                 this.addViolation({
                     classId: entry.classId,
                     className: entry.className,
-                    constraintType: 'HC8: Class Type Time',
+                    constraintType: "HC8: Class Type Time",
                     reason: `Evening class starting too early at ${entry.timeSlot.startTime}`,
-                    severity: 'hard'
+                    severity: "hard",
                 });
                 return false;
             }
@@ -440,13 +611,13 @@ class ConstraintChecker {
         }
         else {
             // Morning classes must be < 18:30
-            if (hour >= 18) {
+            if (hour >= 18 && minute >= 30) {
                 this.addViolation({
                     classId: entry.classId,
                     className: entry.className,
-                    constraintType: 'HC8: Class Type Time',
+                    constraintType: "HC8: Class Type Time",
                     reason: `Morning class starting too late at ${entry.timeSlot.startTime}`,
-                    severity: 'hard'
+                    severity: "hard",
                 });
                 return false;
             }
@@ -457,54 +628,74 @@ class ConstraintChecker {
      * HC9: Saturday restriction
      */
     checkSaturdayRestriction(entry) {
-        if (entry.timeSlot.day !== 'Saturday') {
+        if (entry.timeSlot.day !== "Saturday") {
             return true;
         }
-        const isMagisterManajemen = entry.prodi.toLowerCase().includes('magister manajemen');
+        const isMagisterManajemen = entry.prodi.toLowerCase().includes("magister manajemen");
         if (!isMagisterManajemen) {
             this.addViolation({
                 classId: entry.classId,
                 className: entry.className,
-                constraintType: 'HC9: Saturday Restriction',
+                constraintType: "HC9: Saturday Restriction",
                 reason: `Only Magister Manajemen allowed on Saturday, but class is from ${entry.prodi}`,
-                severity: 'hard',
-                details: { prodi: entry.prodi }
+                severity: "hard",
+                details: { prodi: entry.prodi },
             });
         }
         return isMagisterManajemen;
     }
     /**
-     * HC10: Friday time restriction (NEW)
+     * HC10: Friday time restriction
      */
     checkFridayTimeRestriction(entry) {
-        if (entry.timeSlot.day !== 'Friday') {
+        if (entry.timeSlot.day !== "Friday") {
             return true;
         }
         if (!isValidFridayStartTime(entry.timeSlot.startTime)) {
             this.addViolation({
                 classId: entry.classId,
                 className: entry.className,
-                constraintType: 'HC10: Friday Time Restriction',
+                constraintType: "HC10: Friday Time Restriction",
                 reason: `Cannot start class at ${entry.timeSlot.startTime} on Friday (prohibited: 11:00, 12:00, 13:00)`,
-                severity: 'hard',
-                details: { startTime: entry.timeSlot.startTime }
+                severity: "hard",
+                details: { startTime: entry.timeSlot.startTime },
             });
             return false;
         }
         return true;
     }
     /**
-     * HC11: Not starting during prayer time (NEW)
+     * HC11: Not starting during prayer time
      */
     checkNotStartingDuringPrayerTime(entry) {
         if (isStartingDuringPrayerTime(entry.timeSlot.startTime)) {
             this.addViolation({
                 classId: entry.classId,
                 className: entry.className,
-                constraintType: 'HC11: Prayer Time Start',
+                constraintType: "HC11: Prayer Time Start",
                 reason: `Class cannot start during prayer time at ${entry.timeSlot.startTime}`,
-                severity: 'hard',
-                details: { startTime: entry.timeSlot.startTime }
+                severity: "hard",
+                details: { startTime: entry.timeSlot.startTime },
+            });
+            return false;
+        }
+        return true;
+    }
+    /**
+     * HC12: Exclusive room constraint - NEW
+     */
+    checkExclusiveRoomConstraint(entry) {
+        const exclusiveConfig = EXCLUSIVE_ROOMS[entry.room];
+        if (!exclusiveConfig)
+            return true; // Not an exclusive room
+        if (!canUseExclusiveRoom(entry.room, entry.className, entry.prodi)) {
+            this.addViolation({
+                classId: entry.classId,
+                className: entry.className,
+                constraintType: "HC12: Exclusive Room",
+                reason: `Room ${entry.room} is exclusive for ${exclusiveConfig.courses.join(", ")} from ${exclusiveConfig.prodi || "any prodi"}`,
+                severity: "hard",
+                details: { room: entry.room, allowedCourses: exclusiveConfig.courses },
             });
             return false;
         }
@@ -538,18 +729,18 @@ class ConstraintChecker {
             if (!lecturer || !lecturer.Prefered_Time)
                 continue;
             const preferredTime = lecturer.Prefered_Time.toLowerCase();
-            const hour = parseInt(entry.timeSlot.startTime.split(':')[0]);
+            const hour = parseInt(entry.timeSlot.startTime.split(":")[0]);
             count++;
-            if (preferredTime === 'pagi' && hour >= 7 && hour < 12) {
+            if (preferredTime === "pagi" && hour >= 7 && hour < 12) {
                 totalScore += 1;
             }
-            else if (preferredTime === 'siang' && hour >= 12 && hour < 15) {
+            else if (preferredTime === "siang" && hour >= 12 && hour < 15) {
                 totalScore += 1;
             }
-            else if (preferredTime === 'sore' && hour >= 15 && hour < 18) {
+            else if (preferredTime === "sore" && hour >= 15 && hour < 18) {
                 totalScore += 1;
             }
-            else if (preferredTime === 'malam' && hour >= 18) {
+            else if (preferredTime === "malam" && hour >= 18) {
                 totalScore += 1;
             }
         }
@@ -602,7 +793,7 @@ class ConstraintChecker {
      * SC4: Compactness
      */
     checkCompactness(schedule, entry) {
-        const sameDayClasses = schedule.filter(s => s.timeSlot.day === entry.timeSlot.day);
+        const sameDayClasses = schedule.filter((s) => s.timeSlot.day === entry.timeSlot.day);
         if (sameDayClasses.length === 0)
             return 1;
         let minGap = Infinity;
@@ -627,7 +818,7 @@ class ConstraintChecker {
         return minGap <= 60 ? 1 : Math.max(0, 1 - (minGap - 60) / 180);
     }
     /**
-     * SC5: Avoid prayer time overlap (NEW - soft constraint)
+     * SC5: Avoid prayer time overlap
      */
     checkPrayerTimeOverlap(entry) {
         const prayerTime = getPrayerTimeOverlap(entry.timeSlot.startTime, entry.sks, entry.timeSlot.day);
@@ -635,33 +826,72 @@ class ConstraintChecker {
             return 1; // Perfect, no overlap
         }
         // Penalty based on how much prayer time is overlapped
-        // 0 minutes = score 1.0
-        // 50+ minutes = score 0.5
-        const score = Math.max(0.5, 1 - (prayerTime / 100));
+        const score = Math.max(0.5, 1 - prayerTime / 100);
         this.addViolation({
             classId: entry.classId,
             className: entry.className,
-            constraintType: 'SC5: Prayer Time Overlap',
+            constraintType: "SC5: Prayer Time Overlap",
             reason: `Class overlaps with ${prayerTime} minutes of prayer time`,
-            severity: 'soft',
-            details: { prayerTimeMinutes: prayerTime }
+            severity: "soft",
+            details: { prayerTimeMinutes: prayerTime },
         });
         return score;
     }
     /**
-     * SC6: Evening class priority (18:30 preferred over 15:30) (NEW)
+     * SC6: Evening class priority - MODIFIED: Penalize late starts (19:30)
      */
     checkEveningClassPriority(entry) {
-        if (entry.classType !== 'sore')
+        if (entry.classType !== "sore")
             return 1;
-        const hour = parseInt(entry.timeSlot.startTime.split(':')[0]);
-        if (hour === 18) {
-            return 1; // Perfect! Starting at 18:30
+        const startMinutes = timeToMinutes(entry.timeSlot.startTime);
+        const hour = parseInt(entry.timeSlot.startTime.split(":")[0]);
+        // Prioritize earlier start times
+        if (startMinutes >= 15 * 60 + 30 && startMinutes < 16 * 60) {
+            return 1.0; // 15:30-16:00 - Excellent
         }
-        else if (hour >= 15 && hour < 18) {
-            return 0.7; // Acceptable but not preferred
+        else if (startMinutes >= 16 * 60 && startMinutes < 18 * 60) {
+            return 0.95; // 16:00-18:00 - Very good
         }
-        return 0.5; // Not ideal
+        else if (startMinutes >= 18 * 60 && startMinutes < 18 * 60 + 30) {
+            return 0.9; // 18:00-18:30 - Good
+        }
+        else if (startMinutes === 18 * 60 + 30) {
+            return 0.85; // 18:30 - Standard evening time
+        }
+        else if (startMinutes > 18 * 60 + 30 && startMinutes < 19 * 60 + 30) {
+            return 0.6; // 18:30-19:30 - Acceptable but not ideal
+        }
+        else if (startMinutes >= 19 * 60 + 30) {
+            // 19:30 or later - Heavy penalty to avoid this
+            this.addViolation({
+                classId: entry.classId,
+                className: entry.className,
+                constraintType: "SC6: Late Evening Start",
+                reason: `Evening class starting too late at ${entry.timeSlot.startTime} (should avoid 19:30+)`,
+                severity: "soft",
+                details: { startTime: entry.timeSlot.startTime },
+            });
+            return 0.3; // Strong penalty
+        }
+        return 0.5;
+    }
+    /**
+     * SC7: Overflow penalty - NEW: Penalize non-lab classes using lab rooms
+     */
+    checkOverflowPenalty(entry) {
+        if (entry.isOverflowToLab) {
+            // Non-lab class is using lab room due to overflow
+            this.addViolation({
+                classId: entry.classId,
+                className: entry.className,
+                constraintType: "SC7: Overflow to Lab",
+                reason: `Non-lab class using lab room ${entry.room} due to non-lab rooms being full`,
+                severity: "soft",
+                details: { room: entry.room },
+            });
+            return 0.7; // Acceptable with small penalty
+        }
+        return 1;
     }
 }
 exports.ConstraintChecker = ConstraintChecker;
@@ -673,7 +903,7 @@ class SimulatedAnnealing {
     lecturers;
     classes;
     checker;
-    initialTemperature = 1000;
+    initialTemperature = 100000;
     minTemperature = 0.1;
     coolingRate = 0.995;
     maxIterations = 50000;
@@ -683,9 +913,10 @@ class SimulatedAnnealing {
         preferredRoom: 5,
         transitTime: 20,
         compactness: 8,
-        prayerTimeOverlap: 15, // NEW
-        eveningClassPriority: 12, // NEW
-        labRequirement: 10 // Changed from hard to soft
+        prayerTimeOverlap: 15,
+        eveningClassPriority: 25, // INCREASED: Strong preference for early evening starts
+        labRequirement: 10,
+        overflowPenalty: 5, // NEW: Small penalty for overflow
     };
     constructor(rooms, lecturers, classes) {
         this.rooms = rooms;
@@ -694,7 +925,7 @@ class SimulatedAnnealing {
         this.checker = new ConstraintChecker(rooms, lecturers);
     }
     /**
-     * Generate initial solution
+     * Generate initial solution with smart room allocation
      */
     generateInitialSolution() {
         const schedule = [];
@@ -713,92 +944,79 @@ class SimulatedAnnealing {
             if (lecturers.length === 0)
                 continue;
             const participants = classReq.Peserta || 30;
-            const needsLab = classReq.should_on_the_lab?.toLowerCase() === 'yes';
-            const classType = classReq.Class_Type?.toLowerCase() || 'pagi';
-            const prodi = classReq.Prodi || 'Unknown';
-            // Get available rooms - prioritize lab rooms if needed, but allow fallback
-            let roomCodes = [];
-            if (classReq.rooms) {
-                roomCodes = classReq.rooms.split(',').map(r => r.trim()).filter(r => {
-                    const room = this.rooms.find(room => room.Code === r);
-                    return room && room.Capacity >= participants;
-                });
-            }
-            // If no specific rooms or need lab, get appropriate rooms
-            if (roomCodes.length === 0) {
-                if (needsLab) {
-                    // Try lab rooms first
-                    roomCodes = this.rooms
-                        .filter(r => LAB_ROOMS.includes(r.Code) && r.Capacity >= participants)
-                        .map(r => r.Code);
-                    // Fallback to non-lab if no lab available
-                    if (roomCodes.length === 0) {
-                        roomCodes = this.rooms
-                            .filter(r => NON_LAB_ROOMS.includes(r.Code) && r.Capacity >= participants)
-                            .map(r => r.Code);
-                    }
-                }
-                else {
-                    roomCodes = this.rooms
-                        .filter(r => r.Capacity >= participants)
-                        .map(r => r.Code);
-                }
-            }
-            if (roomCodes.length === 0)
-                continue;
+            const needsLab = classReq.should_on_the_lab?.toLowerCase() === "yes";
+            const classType = classReq.Class_Type?.toLowerCase() || "pagi";
+            const prodi = classReq.Prodi || "Unknown";
+            const courseName = classReq.Mata_Kuliah || "Unknown";
             // Select time slots based on class type and constraints
             let availableTimeSlots = [];
-            if (classType === 'sore') {
-                // Evening classes: prioritize 18:30, allow 15:30+ as fallback
-                availableTimeSlots = TIME_SLOTS.filter(slot => {
-                    const hour = parseInt(slot.startTime.split(':')[0]);
-                    return hour >= 15; // Allow 15:30+ for evening classes
+            if (classType === "sore") {
+                // Evening classes: prioritize 15:30-18:30, allow later as fallback
+                availableTimeSlots = TIME_SLOTS_SORE.slice().sort((a, b) => {
+                    const aMinutes = timeToMinutes(a.startTime);
+                    const bMinutes = timeToMinutes(b.startTime);
+                    // Prioritize earlier times
+                    return aMinutes - bMinutes;
                 });
             }
             else {
                 availableTimeSlots = TIME_SLOTS_PAGI.slice();
             }
             // Filter by day constraints
-            const isMagisterManajemen = prodi.toLowerCase().includes('magister manajemen');
+            const isMagisterManajemen = prodi.toLowerCase().includes("magister manajemen");
             if (!isMagisterManajemen) {
-                availableTimeSlots = availableTimeSlots.filter(slot => slot.day !== 'Saturday');
+                availableTimeSlots = availableTimeSlots.filter((slot) => slot.day !== "Saturday");
             }
             // Filter Friday time restrictions
-            availableTimeSlots = availableTimeSlots.filter(slot => {
-                if (slot.day === 'Friday') {
+            availableTimeSlots = availableTimeSlots.filter((slot) => {
+                if (slot.day === "Friday") {
                     return isValidFridayStartTime(slot.startTime);
                 }
                 return true;
             });
             // Filter out prayer time starts
-            availableTimeSlots = availableTimeSlots.filter(slot => {
+            availableTimeSlots = availableTimeSlots.filter((slot) => {
                 return !isStartingDuringPrayerTime(slot.startTime);
             });
             if (availableTimeSlots.length === 0)
                 continue;
-            const randomRoom = roomCodes[Math.floor(Math.random() * roomCodes.length)];
-            const randomTimeSlot = availableTimeSlots[Math.floor(Math.random() * availableTimeSlots.length)];
-            const prayerTimeCalc = calculateEndTime(randomTimeSlot.startTime, classReq.SKS || 3, randomTimeSlot.day);
-            schedule.push({
-                classId: classReq.Kode_Matakuliah,
-                className: classReq.Mata_Kuliah || 'Unknown',
-                prodi,
-                lecturers,
-                room: randomRoom,
-                timeSlot: randomTimeSlot,
-                sks: classReq.SKS || 3,
-                needsLab,
-                participants,
-                classType,
-                prayerTimeAdded: prayerTimeCalc.prayerTimeAdded
-            });
+            // Try to find available room and time slot
+            let placed = false;
+            for (const timeSlot of availableTimeSlots) {
+                const roomCodes = getAvailableRooms(this.rooms, schedule, classReq, timeSlot, participants, needsLab, courseName, prodi);
+                if (roomCodes.length > 0) {
+                    const selectedRoom = roomCodes[0]; // Take first available
+                    const prayerTimeCalc = calculateEndTime(timeSlot.startTime, classReq.SKS || 3, timeSlot.day);
+                    // Check if this is overflow case
+                    const isOverflow = !needsLab && LAB_ROOMS.includes(selectedRoom);
+                    schedule.push({
+                        classId: classReq.Kode_Matakuliah,
+                        className: courseName,
+                        prodi,
+                        lecturers,
+                        room: selectedRoom,
+                        timeSlot: timeSlot,
+                        sks: classReq.SKS || 3,
+                        needsLab,
+                        participants,
+                        classType,
+                        prayerTimeAdded: prayerTimeCalc.prayerTimeAdded,
+                        isOverflowToLab: isOverflow,
+                    });
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                console.warn(`⚠️  Could not place class: ${classReq.Kode_Matakuliah} - ${courseName}`);
+            }
         }
         const fitness = this.calculateFitness(schedule);
         return {
             schedule,
             fitness: isNaN(fitness) ? 999999 : fitness,
             hardViolations: 0,
-            softViolations: 0
+            softViolations: 0,
         };
     }
     /**
@@ -832,6 +1050,8 @@ class SimulatedAnnealing {
                 hardViolations++;
             if (!this.checker.checkNotStartingDuringPrayerTime(entry))
                 hardViolations++;
+            if (!this.checker.checkExclusiveRoomConstraint(entry))
+                hardViolations++;
             // SOFT CONSTRAINTS
             softPenalty += (1 - this.checker.checkPreferredTime(entry)) * this.softConstraintWeights.preferredTime;
             softPenalty += (1 - this.checker.checkPreferredRoom(entry)) * this.softConstraintWeights.preferredRoom;
@@ -840,6 +1060,7 @@ class SimulatedAnnealing {
             softPenalty += (1 - this.checker.checkLabRequirement(entry)) * this.softConstraintWeights.labRequirement;
             softPenalty += (1 - this.checker.checkPrayerTimeOverlap(entry)) * this.softConstraintWeights.prayerTimeOverlap;
             softPenalty += (1 - this.checker.checkEveningClassPriority(entry)) * this.softConstraintWeights.eveningClassPriority;
+            softPenalty += (1 - this.checker.checkOverflowPenalty(entry)) * this.softConstraintWeights.overflowPenalty;
         }
         return hardViolations * this.hardConstraintWeight + softPenalty;
     }
@@ -854,27 +1075,29 @@ class SimulatedAnnealing {
         if (modType < 0.5) {
             // Change time slot
             let availableTimeSlots = [];
-            if (entry.classType === 'sore') {
-                availableTimeSlots = TIME_SLOTS.filter(slot => {
-                    const hour = parseInt(slot.startTime.split(':')[0]);
-                    return hour >= 15;
+            if (entry.classType === "sore") {
+                // Evening: prioritize earlier times
+                availableTimeSlots = TIME_SLOTS_SORE.slice().sort((a, b) => {
+                    const aMinutes = timeToMinutes(a.startTime);
+                    const bMinutes = timeToMinutes(b.startTime);
+                    return aMinutes - bMinutes;
                 });
             }
             else {
                 availableTimeSlots = TIME_SLOTS_PAGI.slice();
             }
             // Apply constraints
-            const isMM = entry.prodi.toLowerCase().includes('magister manajemen');
+            const isMM = entry.prodi.toLowerCase().includes("magister manajemen");
             if (!isMM) {
-                availableTimeSlots = availableTimeSlots.filter(slot => slot.day !== 'Saturday');
+                availableTimeSlots = availableTimeSlots.filter((slot) => slot.day !== "Saturday");
             }
-            availableTimeSlots = availableTimeSlots.filter(slot => {
-                if (slot.day === 'Friday') {
+            availableTimeSlots = availableTimeSlots.filter((slot) => {
+                if (slot.day === "Friday") {
                     return isValidFridayStartTime(slot.startTime);
                 }
                 return true;
             });
-            availableTimeSlots = availableTimeSlots.filter(slot => {
+            availableTimeSlots = availableTimeSlots.filter((slot) => {
                 return !isStartingDuringPrayerTime(slot.startTime);
             });
             if (availableTimeSlots.length > 0) {
@@ -886,34 +1109,17 @@ class SimulatedAnnealing {
             }
         }
         else {
-            // Change room
-            const classReq = this.classes.find(c => c.Kode_Matakuliah === entry.classId);
-            let roomCodes = [];
-            if (classReq && classReq.rooms) {
-                roomCodes = classReq.rooms.split(',').map(r => r.trim()).filter(r => {
-                    const room = this.rooms.find(room => room.Code === r);
-                    return room && room.Capacity >= entry.participants;
-                });
-            }
-            if (roomCodes.length === 0) {
-                if (entry.needsLab) {
-                    roomCodes = this.rooms
-                        .filter(r => LAB_ROOMS.includes(r.Code) && r.Capacity >= entry.participants)
-                        .map(r => r.Code);
-                    if (roomCodes.length === 0) {
-                        roomCodes = this.rooms
-                            .filter(r => NON_LAB_ROOMS.includes(r.Code) && r.Capacity >= entry.participants)
-                            .map(r => r.Code);
-                    }
-                }
-                else {
-                    roomCodes = this.rooms
-                        .filter(r => r.Capacity >= entry.participants)
-                        .map(r => r.Code);
-                }
-            }
+            // Change room with smart allocation
+            const classReq = this.classes.find((c) => c.Kode_Matakuliah === entry.classId);
+            if (!classReq)
+                return solution;
+            const scheduleWithoutCurrent = newSchedule.filter((_, idx) => idx !== randomIndex);
+            const roomCodes = getAvailableRooms(this.rooms, scheduleWithoutCurrent, classReq, entry.timeSlot, entry.participants, entry.needsLab, entry.className, entry.prodi);
             if (roomCodes.length > 0) {
-                entry.room = roomCodes[Math.floor(Math.random() * roomCodes.length)];
+                const newRoom = roomCodes[Math.floor(Math.random() * roomCodes.length)];
+                entry.room = newRoom;
+                // Update overflow flag
+                entry.isOverflowToLab = !entry.needsLab && LAB_ROOMS.includes(newRoom);
             }
         }
         const fitness = this.calculateFitness(newSchedule);
@@ -921,7 +1127,7 @@ class SimulatedAnnealing {
             schedule: newSchedule,
             fitness: isNaN(fitness) ? 999999 : fitness,
             hardViolations: 0,
-            softViolations: 0
+            softViolations: 0,
         };
     }
     /**
@@ -937,12 +1143,13 @@ class SimulatedAnnealing {
      * Main SA algorithm
      */
     solve() {
-        console.log('🚀 Starting Enhanced Simulated Annealing...\n');
+        console.log("🚀 Starting Enhanced Simulated Annealing V2...\n");
         let currentSolution = this.generateInitialSolution();
         let bestSolution = JSON.parse(JSON.stringify(currentSolution));
         let temperature = this.initialTemperature;
         let iteration = 0;
-        console.log(`Initial fitness: ${currentSolution.fitness.toFixed(2)}\n`);
+        console.log(`Initial fitness: ${currentSolution.fitness.toFixed(2)}`);
+        console.log(`Initial schedule size: ${currentSolution.schedule.length} classes\n`);
         while (temperature > this.minTemperature && iteration < this.maxIterations) {
             const newSolution = this.generateNeighbor(currentSolution);
             const acceptProb = this.acceptanceProbability(currentSolution.fitness, newSolution.fitness, temperature);
@@ -950,17 +1157,13 @@ class SimulatedAnnealing {
                 currentSolution = newSolution;
                 if (currentSolution.fitness < bestSolution.fitness) {
                     bestSolution = JSON.parse(JSON.stringify(currentSolution));
-                    console.log(`✨ New best! Iteration ${iteration}, ` +
-                        `Temperature: ${temperature.toFixed(2)}, ` +
-                        `Fitness: ${bestSolution.fitness.toFixed(2)}`);
+                    console.log(`✨ New best! Iteration ${iteration}, ` + `Temperature: ${temperature.toFixed(2)}, ` + `Fitness: ${bestSolution.fitness.toFixed(2)}`);
                 }
             }
             temperature *= this.coolingRate;
             iteration++;
             if (iteration % 1000 === 0) {
-                console.log(`⏳ Iteration ${iteration}, ` +
-                    `Temperature: ${temperature.toFixed(2)}, ` +
-                    `Current Fitness: ${currentSolution.fitness.toFixed(2)}`);
+                console.log(`⏳ Iteration ${iteration}, ` + `Temperature: ${temperature.toFixed(2)}, ` + `Current Fitness: ${currentSolution.fitness.toFixed(2)}`);
             }
         }
         console.log(`\n🎉 Optimization complete!`);
@@ -969,8 +1172,8 @@ class SimulatedAnnealing {
         // Generate final violation report
         this.calculateFitness(bestSolution.schedule);
         const violations = this.checker.getViolations();
-        const hardViolations = violations.filter(v => v.severity === 'hard');
-        const softViolations = violations.filter(v => v.severity === 'soft');
+        const hardViolations = violations.filter((v) => v.severity === "hard");
+        const softViolations = violations.filter((v) => v.severity === "soft");
         const violationsByType = {};
         for (const v of violations) {
             violationsByType[v.constraintType] = (violationsByType[v.constraintType] || 0) + 1;
@@ -981,8 +1184,8 @@ class SimulatedAnnealing {
             summary: {
                 totalHardViolations: hardViolations.length,
                 totalSoftViolations: softViolations.length,
-                violationsByType
-            }
+                violationsByType,
+            },
         };
         return bestSolution;
     }
@@ -992,54 +1195,100 @@ exports.SimulatedAnnealing = SimulatedAnnealing;
 // MAIN EXECUTION
 // ============================================
 function main() {
-    console.log('==========================================');
-    console.log('ENHANCED SIMULATED ANNEALING - UTCP SOLVER');
-    console.log('University Timetabling Problem');
-    console.log('==========================================\n');
-    const { rooms, lecturers, classes } = loadData("/home/aikano/ade-belajar/timetable-sa/src/data_uisi.xlsx");
+    console.log("==========================================");
+    console.log("ENHANCED SA V2 - UTCP SOLVER");
+    console.log("University Timetabling Problem");
+    console.log("With Overflow Handling & Exclusive Rooms");
+    console.log("==========================================\n");
+    const dataPath = process.argv[2] || "/home/aikano/ade-belajar/timetable-sa/src/data_uisi.xlsx";
+    const { rooms, lecturers, classes } = loadData(dataPath);
     console.log(`✅ Loaded ${rooms.length} rooms`);
+    console.log(`   - Lab rooms: ${LAB_ROOMS.length}`);
+    console.log(`   - Non-lab rooms: ${NON_LAB_ROOMS.length}`);
+    console.log(`   - Exclusive rooms: ${Object.keys(EXCLUSIVE_ROOMS).length}`);
     console.log(`✅ Loaded ${lecturers.length} lecturers`);
-    console.log(`✅ Loaded ${classes.filter(c => c.Kode_Matakuliah).length} classes\n`);
+    console.log(`✅ Loaded ${classes.filter((c) => c.Kode_Matakuliah).length} classes\n`);
     const sa = new SimulatedAnnealing(rooms, lecturers, classes);
     const solution = sa.solve();
-    console.log('💾 Saving results...\n');
+    console.log("💾 Saving results...\n");
+    // Analyze room usage
+    const roomUsage = {};
+    const overflowClasses = [];
+    for (const entry of solution.schedule) {
+        roomUsage[entry.room] = (roomUsage[entry.room] || 0) + 1;
+        if (entry.isOverflowToLab) {
+            overflowClasses.push(entry);
+        }
+    }
+    console.log("📊 Room Usage Statistics:");
+    console.log(`   Total classes scheduled: ${solution.schedule.length}`);
+    console.log(`   Non-lab classes using lab rooms (overflow): ${overflowClasses.length}`);
+    console.log(`   Exclusive room (G5-LabAudioVisual) usage: ${roomUsage["G5-LabAudioVisual"] || 0} classes\n`);
     // Convert to readable format
-    const output = solution.schedule.map(entry => {
+    const output = solution.schedule.map((entry) => {
         const calc = calculateEndTime(entry.timeSlot.startTime, entry.sks, entry.timeSlot.day);
         return {
-            'Class ID': entry.classId,
-            'Class Name': entry.className,
-            'Program': entry.prodi,
-            'Lecturers': entry.lecturers.join(', '),
-            'Room': entry.room,
-            'Day': entry.timeSlot.day,
-            'Start Time': entry.timeSlot.startTime,
-            'End Time': calc.endTime,
-            'SKS': entry.sks,
-            'Base Duration (minutes)': entry.sks * 50 + (entry.sks - 1) * 10,
-            'Prayer Time Added (minutes)': entry.prayerTimeAdded,
-            'Total Duration (minutes)': entry.sks * 50 + (entry.sks - 1) * 10 + entry.prayerTimeAdded,
-            'Participants': entry.participants,
-            'Class Type': entry.classType,
-            'Needs Lab': entry.needsLab ? 'Yes' : 'No'
+            "Class ID": entry.classId,
+            "Class Name": entry.className,
+            Program: entry.prodi,
+            Lecturers: entry.lecturers.join(", "),
+            Room: entry.room,
+            "Room Type": LAB_ROOMS.includes(entry.room) ? "Lab" : "Non-Lab",
+            "Is Overflow": entry.isOverflowToLab ? "Yes" : "No",
+            Day: entry.timeSlot.day,
+            "Start Time": entry.timeSlot.startTime,
+            "End Time": calc.endTime,
+            SKS: entry.sks,
+            "Base Duration (minutes)": entry.sks * 50,
+            "Prayer Time Added (minutes)": entry.prayerTimeAdded,
+            "Total Duration (minutes)": entry.sks * 50 + entry.prayerTimeAdded,
+            Participants: entry.participants,
+            "Class Type": entry.classType,
+            "Needs Lab": entry.needsLab ? "Yes" : "No",
         };
     });
-    fs_1.default.writeFileSync("/home/aikano/ade-belajar/timetable-sa/out/timetable_result_enhanced.json", JSON.stringify(output, null, 2));
+    const outDir = "/home/aikano/ade-belajar/timetable-sa/out";
+    // Create output directory
+    if (!fs_1.default.existsSync(outDir)) {
+        fs_1.default.mkdirSync(outDir, { recursive: true });
+    }
+    fs_1.default.writeFileSync(`${outDir}/timetable_result_v2.json`, JSON.stringify(output, null, 2));
+    // Save overflow report
+    const overflowReport = {
+        summary: {
+            totalOverflowClasses: overflowClasses.length,
+            totalScheduledClasses: solution.schedule.length,
+            overflowPercentage: ((overflowClasses.length / solution.schedule.length) * 100).toFixed(2) + "%",
+        },
+        overflowClasses: overflowClasses.map((entry) => ({
+            classId: entry.classId,
+            className: entry.className,
+            prodi: entry.prodi,
+            room: entry.room,
+            day: entry.timeSlot.day,
+            startTime: entry.timeSlot.startTime,
+            participants: entry.participants,
+        })),
+    };
+    fs_1.default.writeFileSync(`${outDir}/overflow_report.json`, JSON.stringify(overflowReport, null, 2));
     // Save violation report
     if (solution.violationReport) {
-        fs_1.default.writeFileSync('/home/aikano/ade-belajar/timetable-sa/out/violation_report.json', JSON.stringify(solution.violationReport, null, 2));
+        fs_1.default.writeFileSync(`${outDir}/violation_report_v2.json`, JSON.stringify(solution.violationReport, null, 2));
         // Create human-readable violation report
-        let reportText = '==========================================\n';
-        reportText += 'CONSTRAINT VIOLATION REPORT\n';
-        reportText += '==========================================\n\n';
+        let reportText = "==========================================\n";
+        reportText += "CONSTRAINT VIOLATION REPORT V2\n";
+        reportText += "==========================================\n\n";
         reportText += `📊 SUMMARY:\n`;
         reportText += `   Total Hard Violations: ${solution.violationReport.summary.totalHardViolations}\n`;
         reportText += `   Total Soft Violations: ${solution.violationReport.summary.totalSoftViolations}\n\n`;
+        reportText += `📊 OVERFLOW STATISTICS:\n`;
+        reportText += `   Non-lab classes using lab rooms: ${overflowClasses.length}\n`;
+        reportText += `   Percentage: ${overflowReport.summary.overflowPercentage}\n\n`;
         reportText += `📋 VIOLATIONS BY TYPE:\n`;
         for (const [type, count] of Object.entries(solution.violationReport.summary.violationsByType)) {
             reportText += `   ${type}: ${count}\n`;
         }
-        reportText += '\n';
+        reportText += "\n";
         if (solution.violationReport.hardConstraintViolations.length > 0) {
             reportText += `🚫 HARD CONSTRAINT VIOLATIONS:\n`;
             for (const v of solution.violationReport.hardConstraintViolations.slice(0, 20)) {
@@ -1059,21 +1308,33 @@ function main() {
                 reportText += `   ... and ${solution.violationReport.softConstraintViolations.length - 10} more\n`;
             }
         }
-        fs_1.default.writeFileSync("/home/aikano/ade-belajar/timetable-sa/out/violation_report.txt", reportText);
+        fs_1.default.writeFileSync(`${outDir}/violation_report_v2.txt`, reportText);
     }
     // Create Excel output
     const ws = XLSX.utils.json_to_sheet(output);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Timetable');
-    XLSX.writeFile(wb, "/home/aikano/ade-belajar/timetable-sa/out/timetable_result_enhanced.xlsx");
-    console.log('✅ Results saved to:');
-    console.log('   - timetable_result_enhanced.json');
-    console.log('   - timetable_result_enhanced.xlsx');
-    console.log('   - violation_report.json');
-    console.log('   - violation_report.txt\n');
-    console.log('==========================================');
-    console.log('PROCESS COMPLETE! 🎓');
-    console.log('==========================================');
+    XLSX.utils.book_append_sheet(wb, ws, "Timetable");
+    // Add overflow sheet
+    const overflowWs = XLSX.utils.json_to_sheet(overflowClasses.map((entry) => ({
+        "Class ID": entry.classId,
+        "Class Name": entry.className,
+        Program: entry.prodi,
+        Room: entry.room,
+        Day: entry.timeSlot.day,
+        "Start Time": entry.timeSlot.startTime,
+        Participants: entry.participants,
+    })));
+    XLSX.utils.book_append_sheet(wb, overflowWs, "Overflow Classes");
+    XLSX.writeFile(wb, `${outDir}/timetable_result_v2.xlsx`);
+    console.log("✅ Results saved to:");
+    console.log(`   - ${outDir}/timetable_result_v2.json`);
+    console.log(`   - ${outDir}/timetable_result_v2.xlsx`);
+    console.log(`   - ${outDir}/overflow_report.json`);
+    console.log(`   - ${outDir}/violation_report_v2.json`);
+    console.log(`   - ${outDir}/violation_report_v2.txt\n`);
+    console.log("==========================================");
+    console.log("PROCESS COMPLETE! 🎓");
+    console.log("==========================================");
 }
 if (require.main === module) {
     main();

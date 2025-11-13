@@ -1,0 +1,98 @@
+==========================================
+CONSTRAINT VIOLATION REPORT V2
+==========================================
+
+📊 SUMMARY:
+   Total Hard Violations: 404
+   Total Soft Violations: 226
+
+📊 OVERFLOW STATISTICS:
+   Non-lab classes using lab rooms: 13
+   Percentage: 3.76%
+
+📋 VIOLATIONS BY TYPE:
+   HC7: Max Daily Periods: 171
+   SC5: Prayer Time Overlap: 209
+   HC5: Prodi Conflict: 190
+   HC1: Lecturer Conflict: 16
+   SC6: Late Evening Start: 4
+   HC6: Research Day: 17
+   SC7: Overflow to Lab: 13
+   HC2: Room Conflict: 9
+   HC12: Exclusive Room: 1
+
+🚫 HARD CONSTRAINT VIOLATIONS:
+   • MM23EB03 (Economic for Business)
+     HC7: Max Daily Periods: Lecturer BAT exceeds max daily periods (2) on Saturday
+
+   • MM23SM03 (Strategic Marketing Management)
+     HC7: Max Daily Periods: Lecturer WAH exceeds max daily periods (2) on Tuesday
+
+   • MM23HC03 (Strategic Human Capital and Change Management)
+     HC7: Max Daily Periods: Lecturer GTK exceeds max daily periods (2) on Monday
+
+   • MM23CF03 (Corporate Finance)
+     HC7: Max Daily Periods: Lecturer BAT exceeds max daily periods (2) on Wednesday
+
+   • MM23OS03 (Operation and Supply Chain Management)
+     HC5: Prodi Conflict: Same program (Magister Manajemen) has class MM23EB03 at the same time on Saturday
+
+   • MM23OS03 (Operation and Supply Chain Management)
+     HC7: Max Daily Periods: Lecturer PTA exceeds max daily periods (2) on Saturday
+
+   • MM23SC03 (Startup and corporate entrepreneurship)
+     HC1: Lecturer Conflict: Lecturer BAT has conflict with class MM23EB03 on Saturday at 14:30
+
+   • MM23SC03 (Startup and corporate entrepreneurship)
+     HC5: Prodi Conflict: Same program (Magister Manajemen) has class MM23EB03 at the same time on Saturday
+
+   • MM23SC03 (Startup and corporate entrepreneurship)
+     HC7: Max Daily Periods: Lecturer BAT exceeds max daily periods (2) on Saturday
+
+   • MM23CS03 (Corporate Strategic Management)
+     HC5: Prodi Conflict: Same program (Magister Manajemen) has class MM23OS03 at the same time on Saturday
+
+   • MM23TM03 (Transformation Management)
+     HC7: Max Daily Periods: Lecturer GTK exceeds max daily periods (2) on Tuesday
+
+   • MM23LG03 (Leadership for Global Leaders)
+     HC5: Prodi Conflict: Same program (Magister Manajemen) has class MM23CS03 at the same time on Saturday
+
+   • MM23LG03 (Leadership for Global Leaders)
+     HC7: Max Daily Periods: Lecturer GTK exceeds max daily periods (2) on Saturday
+
+   • MM23SE03 (Sustainability and Enviromental Management)
+     HC7: Max Daily Periods: Lecturer ELD exceeds max daily periods (3) on Friday
+
+   • MM23PM03 (Project Management)
+     HC7: Max Daily Periods: Lecturer PTA exceeds max daily periods (2) on Tuesday
+
+   • AB13A103 (Ekonomi untuk Bisnis)
+     HC7: Max Daily Periods: Lecturer MAL exceeds max daily periods (2) on Tuesday
+
+   • MG13PM03 (Pengantar Manajemen)
+     HC7: Max Daily Periods: Lecturer HDC exceeds max daily periods (2) on Wednesday
+
+   • MG13PM03 (Pengantar Manajemen)
+     HC7: Max Daily Periods: Lecturer HDC exceeds max daily periods (2) on Tuesday
+
+   • MG13BK02 (Berpikir Kritis dan Kreatif)
+     HC6: Research Day: Lecturer HDC has research day on Friday
+
+   • MG13BK02 (Berpikir Kritis dan Kreatif)
+     HC5: Prodi Conflict: Same program (MANAJEMEN) has class AB13A103 at the same time on Monday
+
+   ... and 384 more
+
+⚠️  SOFT CONSTRAINT VIOLATIONS (Sample):
+   • MM23EB03: Class overlaps with 30 minutes of prayer time
+   • MM23SM03: Class overlaps with 50 minutes of prayer time
+   • MM23HC03: Class overlaps with 30 minutes of prayer time
+   • MM23CF03: Class overlaps with 30 minutes of prayer time
+   • MM23OS03: Class overlaps with 30 minutes of prayer time
+   • MM23SC03: Class overlaps with 30 minutes of prayer time
+   • MM23CS03: Class overlaps with 30 minutes of prayer time
+   • MM23QL03: Class overlaps with 30 minutes of prayer time
+   • MM23AB03: Evening class starting too late at 19:30 (should avoid 19:30+)
+   • MM23QN03: Class overlaps with 50 minutes of prayer time
+   ... and 216 more

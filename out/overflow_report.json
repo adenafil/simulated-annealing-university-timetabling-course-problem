@@ -1,0 +1,126 @@
+{
+  "summary": {
+    "totalOverflowClasses": 13,
+    "totalScheduledClasses": 346,
+    "overflowPercentage": "3.76%"
+  },
+  "overflowClasses": [
+    {
+      "classId": "MG13KP13",
+      "className": "Kepemimpinan",
+      "prodi": "MANAJEMEN",
+      "room": "CM-LabVirtual",
+      "day": "Wednesday",
+      "startTime": "15:30",
+      "participants": 40
+    },
+    {
+      "classId": "MG13SO13",
+      "className": "Strategi Operasi dan Rantai Pasok",
+      "prodi": "MANAJEMEN",
+      "room": "CM-LabVirtual",
+      "day": "Monday",
+      "startTime": "14:30",
+      "participants": 40
+    },
+    {
+      "classId": "AC133423",
+      "className": "Manajemen Investasi dan Portofolio",
+      "prodi": "Akuntansi",
+      "room": "CM-206",
+      "day": "Monday",
+      "startTime": "10:30",
+      "participants": 42
+    },
+    {
+      "classId": "AC133533",
+      "className": "Akuntansi Keuangan Lanjutan 2",
+      "prodi": "Akuntansi",
+      "room": "CM-Lab3",
+      "day": "Wednesday",
+      "startTime": "07:30",
+      "participants": 42
+    },
+    {
+      "classId": "AC133633",
+      "className": "Metodologi Penelitian",
+      "prodi": "Akuntansi",
+      "room": "CM-207",
+      "day": "Monday",
+      "startTime": "12:30",
+      "participants": 42
+    },
+    {
+      "classId": "AC134013",
+      "className": "Perencanaan Keuangan",
+      "prodi": "Akuntansi",
+      "room": "CM-LabVirtual",
+      "day": "Tuesday",
+      "startTime": "11:30",
+      "participants": 45
+    },
+    {
+      "classId": "AC132413",
+      "className": "Akuntansi Keberlanjutan",
+      "prodi": "Akuntansi",
+      "room": "CM-206",
+      "day": "Wednesday",
+      "startTime": "12:30",
+      "participants": 45
+    },
+    {
+      "classId": "EM13ED03",
+      "className": "Menggambar Teknik",
+      "prodi": "Manajemen Rekayasa",
+      "room": "CM-Lab3",
+      "day": "Thursday",
+      "startTime": "18:30",
+      "participants": 10
+    },
+    {
+      "classId": "ET13CA03",
+      "className": "KALKULUS I",
+      "prodi": "TEKNIK LOGISTIK",
+      "room": "CM-207",
+      "day": "Tuesday",
+      "startTime": "14:30",
+      "participants": 35
+    },
+    {
+      "classId": "ET13CA03",
+      "className": "KALKULUS I",
+      "prodi": "TEKNIK LOGISTIK",
+      "room": "CM-Lab3",
+      "day": "Tuesday",
+      "startTime": "14:30",
+      "participants": 35
+    },
+    {
+      "classId": "CE13OA12",
+      "className": "Kimia Organik 1",
+      "prodi": "Teknik Kimia",
+      "room": "G5-Lab1",
+      "day": "Thursday",
+      "startTime": "15:30",
+      "participants": 30
+    },
+    {
+      "classId": "VD13DI04",
+      "className": "DKV I Desain Informasi",
+      "prodi": "DESAIN KOMUNIKASI VISUAL",
+      "room": "G5-Lab1",
+      "day": "Tuesday",
+      "startTime": "13:30",
+      "participants": 30
+    },
+    {
+      "classId": "VD13SM03",
+      "className": "Seminar dan Metodologi Penelitian",
+      "prodi": "DESAIN KOMUNIKASI VISUAL",
+      "room": "CM-LabVirtual",
+      "day": "Wednesday",
+      "startTime": "07:30",
+      "participants": 45
+    }
+  ]
+}
