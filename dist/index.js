@@ -824,24 +824,21 @@ class ConstraintChecker {
                 const prevEndMins = timeToMinutes(calc.endTime);
                 const currentStartMins = timeToMinutes(entry.timeSlot.startTime);
                 if (prevEndMins >= currentStartMins) {
-                    console.log(`${currentStartMins - prevEndMins} < ${lecturer.Transit_Time}`);
-                    console.log(lecturer);
                     // Lewati jika jadwal lama selesai setelah atau bersamaan dengan jadwal baru mulai
                     continue;
                 }
                 const gapMinutes = currentStartMins - prevEndMins;
                 if (gapMinutes < lecturer.Transit_Time) {
-                    console.log(existing);
-                    console.log(entry);
-                    console.log("the lecturer is", lecturer);
-                    console.log(gapMinutes);
-                    console.log(calc);
-                    console.log(prevEndMins);
-                    console.log(currentStartMins);
                     const score = Math.max(0, gapMinutes / lecturer.Transit_Time);
-                    console.log(score);
+                    this.addViolation({
+                        classId: entry.classId,
+                        className: entry.className,
+                        constraintType: "SC3: Transit Time",
+                        reason: `Lecturer ${lecturerCode} has insufficient transit time (${gapMinutes} mins, required: ${lecturer.Transit_Time} mins) between class ${existing.classId} and ${entry.classId}`,
+                        severity: "soft",
+                        details: { lecturer: lecturerCode, gapMinutes, requiredTransitTime: lecturer.Transit_Time, previousClassId: existing.classId },
+                    });
                     minScore = Math.min(minScore, score);
-                    console.log("min score", minScore);
                 }
             }
         }
@@ -849,23 +846,56 @@ class ConstraintChecker {
     }
     /**
      * SC4: Compactness
+     * the idea of this constraint is to minimize the idle time between classes on the same day.
+     * If classes are scheduled back-to-back or with minimal gaps, it scores higher.
+     * If there are long gaps between classes, it scores lower.
      */
     checkCompactness(schedule, entry) {
         const sameDayClasses = schedule.filter((s) => s.timeSlot.day === entry.timeSlot.day);
+        console.log("someDayClasses", sameDayClasses);
         if (sameDayClasses.length === 0)
             return 1;
         let minGap = Infinity;
         const currentStartMins = timeToMinutes(entry.timeSlot.startTime);
         for (const existing of sameDayClasses) {
             const calc = calculateEndTime(existing.timeSlot.startTime, existing.sks, existing.timeSlot.day);
+            console.log(calc);
             const existingEndMins = timeToMinutes(calc.endTime);
+            console.log(existingEndMins);
+            console.log(minutesToTime(existingEndMins));
             const existingStartMins = timeToMinutes(existing.timeSlot.startTime);
+            console.log(existingStartMins);
+            console.log(minutesToTime(existingStartMins));
+            /**
+             * Cek jarak antara kelas yang sudah (existing) ada dengan kelas yang sedang diperiksa (entry)
+             * Jika jarak antara existing end time dengan entry start time lebih kecil dari minGap, update minGap
+             * example:
+             * existing: 10:00-11:40 (dengan durasi +prayer)
+             * entry: 12:30-13:20 (dengan durasi +prayer)
+             * gap = 12:30 - 11:40 = 50 mins
+             * but example that is not in this flow
+             * existing: 10:00-11:40 (dengan durasi +prayer)
+             * entry: 11:30-12:20 (dengan durasi +prayer)
+             * gap = -10 mins (overlap, so skip)
+             */
             if (existingEndMins <= currentStartMins) {
                 const gap = currentStartMins - existingEndMins;
                 minGap = Math.min(minGap, gap);
             }
             const currentCalc = calculateEndTime(entry.timeSlot.startTime, entry.sks, entry.timeSlot.day);
             const currentEndMins = timeToMinutes(currentCalc.endTime);
+            /**
+             * Cek jarak antara kelas yang sedang diperiksa (entry) dengan kelas yang sudah (existing) ada
+             * Jika jarak antara entry end time dengan existing start time lebih kecil dari minGap, update minGap
+             * example:
+             * existing: 14:00-15:40 (dengan durasi +prayer)
+             * entry: 12:30-13:20 (dengan durasi +prayer)
+             * gap = 14:00 - 13:20 = 40 mins
+             * but example that is not in this flow
+             * existing: 12:00-13:40 (dengan durasi +prayer)
+             * entry: 12:30-13:20 (dengan durasi +prayer)
+             * gap = -10 mins (overlap, so skip)
+             */
             if (currentEndMins <= existingStartMins) {
                 const gap = existingStartMins - currentEndMins;
                 minGap = Math.min(minGap, gap);

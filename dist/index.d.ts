@@ -176,6 +176,9 @@ declare class ConstraintChecker {
     checkTransitTime(schedule: ScheduleEntry[], entry: ScheduleEntry): number;
     /**
      * SC4: Compactness
+     * the idea of this constraint is to minimize the idle time between classes on the same day.
+     * If classes are scheduled back-to-back or with minimal gaps, it scores higher.
+     * If there are long gaps between classes, it scores lower.
      */
     checkCompactness(schedule: ScheduleEntry[], entry: ScheduleEntry): number;
     /**

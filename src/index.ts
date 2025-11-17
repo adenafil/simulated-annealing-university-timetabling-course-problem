@@ -984,7 +984,7 @@ class ConstraintChecker {
         const prevEndMins = timeToMinutes(calc.endTime);
         const currentStartMins = timeToMinutes(entry.timeSlot.startTime);
 
-        if (prevEndMins >= currentStartMins) {          
+        if (prevEndMins >= currentStartMins) {
           // Lewati jika jadwal lama selesai setelah atau bersamaan dengan jadwal baru mulai
           continue;
         }
@@ -992,7 +992,6 @@ class ConstraintChecker {
         const gapMinutes = currentStartMins - prevEndMins;
 
         if (gapMinutes < lecturer.Transit_Time) {
-
           const score = Math.max(0, gapMinutes / lecturer.Transit_Time);
 
           this.addViolation({
@@ -1013,35 +1012,82 @@ class ConstraintChecker {
 
   /**
    * SC4: Compactness
+   * the idea of this constraint is to minimize the idle time between classes on the same day.
+   * If classes are scheduled back-to-back or with minimal gaps, it scores higher.
+   * If there are long gaps between classes, it scores lower.
    */
   checkCompactness(schedule: ScheduleEntry[], entry: ScheduleEntry): number {
+    /**
+     * Get all classes on the same day as the entry being checked
+     */
     const sameDayClasses = schedule.filter((s) => s.timeSlot.day === entry.timeSlot.day);
 
+    /**
+     * If there are no other classes on the same day, return perfect score (1)
+     */
     if (sameDayClasses.length === 0) return 1;
 
     let minGap = Infinity;
     const currentStartMins = timeToMinutes(entry.timeSlot.startTime);
+    const currentEndMins = timeToMinutes(calculateEndTime(entry.timeSlot.startTime, entry.sks, entry.timeSlot.day).endTime);
 
     for (const existing of sameDayClasses) {
-      const calc = calculateEndTime(existing.timeSlot.startTime, existing.sks, existing.timeSlot.day);
-      const existingEndMins = timeToMinutes(calc.endTime);
+      const existingEndMins = timeToMinutes(calculateEndTime(existing.timeSlot.startTime, existing.sks, existing.timeSlot.day).endTime);
       const existingStartMins = timeToMinutes(existing.timeSlot.startTime);
 
+      /**
+       * Cek jarak antara kelas yang sudah (existing) ada dengan kelas yang sedang diperiksa (entry)
+       * Jika jarak antara existing end time dengan entry start time lebih kecil dari minGap, update minGap
+       * example:
+       * existing: 10:00-11:40 (dengan durasi +prayer)
+       * entry: 12:30-13:20 (dengan durasi +prayer)
+       * gap = 12:30 - 11:40 = 50 mins
+       * if example that is not in this flow
+       * existing: 10:00-11:40 (dengan durasi +prayer)
+       * entry: 11:30-12:20 (dengan durasi +prayer)
+       * gap = -10 mins (overlap, so skip)
+       */
       if (existingEndMins <= currentStartMins) {
         const gap = currentStartMins - existingEndMins;
         minGap = Math.min(minGap, gap);
       }
 
-      const currentCalc = calculateEndTime(entry.timeSlot.startTime, entry.sks, entry.timeSlot.day);
-      const currentEndMins = timeToMinutes(currentCalc.endTime);
+      /**
+       * Cek jarak antara kelas yang sedang diperiksa (entry) dengan kelas yang sudah (existing) ada
+       * Jika jarak antara entry end time dengan existing start time lebih kecil dari minGap, update minGap
+       * example:
+       * existing: 14:00-15:40 (dengan durasi +prayer)
+       * entry: 12:30-13:20 (dengan durasi +prayer)
+       * gap = 14:00 - 13:20 = 40 mins
+       * if example that is not in this flow
+       * existing: 12:00-13:40 (dengan durasi +prayer)
+       * entry: 12:30-13:20 (dengan durasi +prayer)
+       * gap = -10 mins (overlap, so skip)
+       */
       if (currentEndMins <= existingStartMins) {
         const gap = existingStartMins - currentEndMins;
         minGap = Math.min(minGap, gap);
       }
     }
 
+    /**
+     * Return a score based on the minimum gap between classes on the same day.
+     * If minGap is less than or equal to 60 minutes, return perfect score (1).
+     * If minGap is greater than 60 minutes, reduce the score linearly down to 0
+     * for gaps up to 240 minutes (4 hours).
+     * example:
+     * minGap = 30 mins -> score = 1 (Max(0, 1 - (30 - 60) / 180) = 1)
+     * minGap = 60 mins -> score = 1 (Max(0, 1 - (60 - 60) / 180) = 1)
+     * minGap = 120 mins -> score = 0.67 (Max(0, 1 - (120 - 60) / 180) = 0.67)
+     * minGap = 180 mins -> score = 0.33 (Max(0, 1 - (180 - 60) / 180) = 0.33)
+     * minGap = 240 mins -> score = 0 (Max(0, 1 - (240 - 60) / 180) = 0)
+     * in categorical terms:
+     * 0-60 mins gap: Excellent (1)
+     * 61-120 mins gap: Good (0.67)
+     * 121-180 mins gap: Fair (0.33)
+     * 181-240 mins gap: Poor (0)
+     */
     if (minGap === Infinity) return 1;
-
     return minGap <= 60 ? 1 : Math.max(0, 1 - (minGap - 60) / 180);
   }
 
