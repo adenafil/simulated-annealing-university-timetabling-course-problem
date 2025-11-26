@@ -988,7 +988,7 @@ class SimulatedAnnealing {
   private initialTemperature = 10000;
   private minTemperature = 0.0000001;
   private coolingRate = 0.9995; // Lebih lambat
-  private maxIterations = 53072;
+  private maxIterations = 20000;
 
   // NEW: Reheating parameters
   reheatingThreshold = 2000; // Wait longer
