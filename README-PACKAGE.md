@@ -369,7 +369,7 @@ If you use this package in your research, please cite:
   title = {timetable-sa: A TypeScript Library for University Course Timetabling},
   author = {Your Name},
   year = {2024},
-  url = {https://github.com/yourusername/timetable-sa}
+  url = {https://github.com/albertabayor/simulated-annealing-university-timetabling-course-problem}
 }
 ```
 
@@ -381,4 +381,4 @@ If you use this package in your research, please cite:
 
 ## Support
 
-For issues and questions, please open an issue on [GitHub](https://github.com/yourusername/timetable-sa/issues).
+For issues and questions, please open an issue on [GitHub](https://github.com/albertabayor/simulated-annealing-university-timetabling-course-problem/issues).

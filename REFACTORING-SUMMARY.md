@@ -255,7 +255,7 @@ const solution = solver.solve();
    ```json
    "repository": {
      "type": "git",
-     "url": "https://github.com/yourusername/timetable-sa.git"
+     "url": "https://github.com/albertabayor/simulated-annealing-university-timetabling-course-problem.git"
    }
    ```
 

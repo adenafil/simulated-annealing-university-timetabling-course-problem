@@ -42,16 +42,16 @@
     "uctp",
     "typescript"
   ],
-  "author": "",
+  "author": "Albert A Bayor",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/timetable-sa.git"
+    "url": "https://github.com/albertabayor/simulated-annealing-university-timetabling-course-problem.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/timetable-sa/issues"
+    "url": "https://github.com/albertabayor/simulated-annealing-university-timetabling-course-problem/issues"
   },
-  "homepage": "https://github.com/yourusername/timetable-sa#readme",
+  "homepage": "https://github.com/albertabayor/simulated-annealing-university-timetabling-course-problem#readme",
   "engines": {
     "node": ">=18.0.0"
   },

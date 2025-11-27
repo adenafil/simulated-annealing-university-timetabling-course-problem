@@ -4,3 +4,6 @@ coverage/
 dist/
 *.log
 .DS_Store
+out/
+.vscode/
+.idea/

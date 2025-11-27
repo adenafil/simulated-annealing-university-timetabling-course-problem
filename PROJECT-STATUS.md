@@ -411,7 +411,7 @@ timetable-sa/
 ## 📞 Support
 
 For issues and questions:
-- GitHub Issues: [Create Issue](https://github.com/yourusername/timetable-sa/issues)
+- GitHub Issues: [Create Issue](https://github.com/albertabayor/simulated-annealing-university-timetabling-course-problem/issues)
 - Documentation: See README-PACKAGE.md
 - Examples: See src/examples/
 
