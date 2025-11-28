@@ -2,96 +2,98 @@
  * Time slot generation for morning (pagi) and evening (sore) classes
  */
 
-import type { TimeSlot } from "../types/index.js";
+import type { TimeSlot, TimeSlotGenerationConfig } from "../types/index.js";
 
-export const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export const TIME_SLOTS_PAGI: TimeSlot[] = [];
-export const TIME_SLOTS_SORE: TimeSlot[] = [];
-export const TIME_SLOTS: TimeSlot[] = [];
+// Default configuration
+export const DEFAULT_PAGI_CONFIG: Required<TimeSlotGenerationConfig> = {
+  startTime: "07:30",
+  endTime: "17:00",
+  slotDuration: 50,
+};
+
+export const DEFAULT_SORE_CONFIG: Required<TimeSlotGenerationConfig> = {
+  startTime: "15:30",
+  endTime: "21:00",
+  slotDuration: 50,
+};
+
+// Export mutable arrays (will be populated by initialization)
+export let TIME_SLOTS_PAGI: TimeSlot[] = [];
+export let TIME_SLOTS_SORE: TimeSlot[] = [];
+export let TIME_SLOTS: TimeSlot[] = [];
+export let DAYS: string[] = DEFAULT_DAYS;
 
 /**
- * Generate time slots for PAGI (morning classes: 07:30 - 17:00)
+ * Parse time string to hours and minutes
  */
-function generatePagiTimeSlots(): void {
-  for (const day of DAYS) {
-    let hour = 7;
-    let minute = 30;
-    let period = 1;
-
-    while (hour < 17 || (hour === 17 && minute === 0)) {
-      const startTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-
-      let endHour = hour;
-      let endMinute = minute + 50;
-      if (endMinute >= 60) {
-        endHour += Math.floor(endMinute / 60);
-        endMinute = endMinute % 60;
-      }
-
-      const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
-
-      if (hour === 19 && minute === 20) break;
-
-      const slot = { day, startTime, endTime, period };
-      TIME_SLOTS_PAGI.push(slot);
-      TIME_SLOTS.push(slot);
-
-      minute = endMinute;
-
-      if (minute === 50 && hour === 15) {
-        minute -= 20;
-      } else if (hour === 18 && minute === 50) {
-        minute -= 20;
-      }
-
-      if (minute >= 60) {
-        hour += Math.floor(minute / 60);
-        minute = minute % 60;
-      } else {
-        hour = endHour;
-      }
-
-      period++;
-    }
-  }
+function parseTime(timeStr: string): { hour: number; minute: number } {
+  const [hourStr, minuteStr] = timeStr.split(":");
+  return {
+    hour: parseInt(hourStr || "0", 10),
+    minute: parseInt(minuteStr || "0", 10),
+  };
 }
 
 /**
- * Generate time slots for SORE (evening classes: 15:30 - 21:00)
+ * Convert time to minutes for comparison
  */
-function generateSoreTimeSlots(): void {
-  for (const day of DAYS) {
-    let hour = 15;
-    let minute = 30;
+function timeToMinutes(hour: number, minute: number): number {
+  return hour * 60 + minute;
+}
+
+/**
+ * Generate time slots based on configuration
+ */
+function generateTimeSlots(
+  days: string[],
+  config: Required<TimeSlotGenerationConfig>,
+  isEvening: boolean = false
+): TimeSlot[] {
+  const slots: TimeSlot[] = [];
+  const start = parseTime(config.startTime);
+  const end = parseTime(config.endTime);
+  const endMinutes = timeToMinutes(end.hour, end.minute);
+
+  for (const day of days) {
+    let hour = start.hour;
+    let minute = start.minute;
     let period = 1;
 
-    while (hour < 21 || (hour === 21 && minute === 0)) {
-      const startTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+    while (true) {
+      const currentMinutes = timeToMinutes(hour, minute);
 
-      let endHour = hour;
-      let endMinute = minute + 50;
-      if (endMinute >= 60) {
-        endHour += Math.floor(endMinute / 60);
-        endMinute = endMinute % 60;
-      }
-
-      if (endHour > 21 || (endHour === 21 && endMinute > 0)) {
+      if (currentMinutes >= endMinutes) {
         break;
       }
-      if (hour === 19 && minute === 20) break;
+
+      const startTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+
+      let endHour = hour;
+      let endMinute = minute + config.slotDuration;
+      if (endMinute >= 60) {
+        endHour += Math.floor(endMinute / 60);
+        endMinute = endMinute % 60;
+      }
+
+      const endTimeMinutes = timeToMinutes(endHour, endMinute);
+      if (endTimeMinutes > endMinutes) {
+        break;
+      }
 
       const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
 
+      // Special handling for prayer time breaks (preserve original logic)
+      if (hour === 19 && minute === 20) break;
+
       const slot = { day, startTime, endTime, period };
-      TIME_SLOTS_SORE.push(slot);
+      slots.push(slot);
 
-      if (hour >= 18 || (hour === 18 && minute >= 30)) {
-        TIME_SLOTS.push(slot);
-      }
-
+      // Move to next slot
       minute = endMinute;
 
+      // Prayer time adjustments (preserve original logic)
       if (minute === 50 && hour === 15) {
         minute -= 20;
       } else if (hour === 18 && minute === 50) {
@@ -108,19 +110,74 @@ function generateSoreTimeSlots(): void {
       period++;
     }
   }
+
+  return slots;
 }
 
 /**
- * Initialize time slots (called automatically)
+ * Initialize time slots with custom configuration
  */
-export function initializeTimeSlots(): void {
-  if (TIME_SLOTS_PAGI.length === 0) {
-    generatePagiTimeSlots();
-  }
-  if (TIME_SLOTS_SORE.length === 0) {
-    generateSoreTimeSlots();
+export function initializeTimeSlots(
+  pagiConfig?: TimeSlotGenerationConfig,
+  soreConfig?: TimeSlotGenerationConfig,
+  customDays?: string[]
+): void {
+  // Merge with defaults
+  const mergedPagiConfig: Required<TimeSlotGenerationConfig> = {
+    ...DEFAULT_PAGI_CONFIG,
+    ...pagiConfig,
+  };
+
+  const mergedSoreConfig: Required<TimeSlotGenerationConfig> = {
+    ...DEFAULT_SORE_CONFIG,
+    ...soreConfig,
+  };
+
+  const daysToUse = customDays || DEFAULT_DAYS;
+  DAYS = daysToUse;
+
+  // Generate slots
+  TIME_SLOTS_PAGI = generateTimeSlots(daysToUse, mergedPagiConfig, false);
+  TIME_SLOTS_SORE = generateTimeSlots(daysToUse, mergedSoreConfig, true);
+
+  // Combine slots for TIME_SLOTS (preserve original logic)
+  TIME_SLOTS = [...TIME_SLOTS_PAGI];
+
+  for (const slot of TIME_SLOTS_SORE) {
+    const slotTime = parseTime(slot.startTime);
+    const slotMinutes = timeToMinutes(slotTime.hour, slotTime.minute);
+
+    // Add evening slots (18:00+) to TIME_SLOTS
+    if (slotMinutes >= timeToMinutes(18, 0)) {
+      TIME_SLOTS.push(slot);
+    }
   }
 }
 
-// Auto-initialize time slots when module is imported
+/**
+ * Set custom time slots directly (full override mode)
+ */
+export function setCustomTimeSlots(pagiSlots?: TimeSlot[], soreSlots?: TimeSlot[]): void {
+  if (pagiSlots) {
+    TIME_SLOTS_PAGI = pagiSlots;
+  }
+
+  if (soreSlots) {
+    TIME_SLOTS_SORE = soreSlots;
+  }
+
+  // Rebuild TIME_SLOTS from custom slots
+  TIME_SLOTS = [...TIME_SLOTS_PAGI];
+
+  for (const slot of TIME_SLOTS_SORE) {
+    const slotTime = parseTime(slot.startTime);
+    const slotMinutes = timeToMinutes(slotTime.hour, slotTime.minute);
+
+    if (slotMinutes >= timeToMinutes(18, 0)) {
+      TIME_SLOTS.push(slot);
+    }
+  }
+}
+
+// Auto-initialize with defaults when module is imported
 initializeTimeSlots();

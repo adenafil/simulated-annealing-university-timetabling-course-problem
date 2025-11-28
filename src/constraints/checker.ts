@@ -17,6 +17,7 @@ import {
   isValidFridayStartTime,
   isStartingDuringPrayerTime,
   canUseExclusiveRoom,
+  hasClassOverlap,
 } from "../utils/index.js";
 
 export class ConstraintChecker {
@@ -144,7 +145,8 @@ export class ConstraintChecker {
    */
   checkNoClassConflictSameProdi(schedule: ScheduleEntry[], entry: ScheduleEntry): boolean {
     for (const existing of schedule) {
-      if (existing.prodi === entry.prodi && this.isTimeOverlap(existing, entry)) {
+      // Check if same prodi, overlapping time, and overlapping classes
+      if (existing.prodi === entry.prodi && this.isTimeOverlap(existing, entry) && hasClassOverlap(existing.class, entry.class)) {
         this.addViolation({
           classId: entry.classId,
           className: entry.className,

@@ -120,4 +120,139 @@ describe('Algorithm Configuration', () => {
       );
     });
   });
+
+  describe('Time Slot Configuration Merge', () => {
+    it('should include default time slot config', () => {
+      const result = mergeConfig();
+
+      expect(result.timeSlotConfig).toBeDefined();
+      expect(result.timeSlotConfig.pagi).toBeDefined();
+      expect(result.timeSlotConfig.sore).toBeDefined();
+      expect(result.timeSlotConfig.days).toBeDefined();
+    });
+
+    it('should merge partial timeSlotConfig.pagi', () => {
+      const userConfig: AlgorithmConfig = {
+        timeSlotConfig: {
+          pagi: {
+            startTime: '08:00',
+          },
+        },
+      };
+
+      const result = mergeConfig(userConfig);
+
+      expect(result.timeSlotConfig.pagi.startTime).toBe('08:00');
+      expect(result.timeSlotConfig.pagi.endTime).toBe('17:00'); // default
+      expect(result.timeSlotConfig.pagi.slotDuration).toBe(50); // default
+    });
+
+    it('should merge partial timeSlotConfig.sore', () => {
+      const userConfig: AlgorithmConfig = {
+        timeSlotConfig: {
+          sore: {
+            startTime: '16:00',
+            endTime: '20:00',
+          },
+        },
+      };
+
+      const result = mergeConfig(userConfig);
+
+      expect(result.timeSlotConfig.sore.startTime).toBe('16:00');
+      expect(result.timeSlotConfig.sore.endTime).toBe('20:00');
+      expect(result.timeSlotConfig.sore.slotDuration).toBe(50); // default
+    });
+
+    it('should override days in timeSlotConfig', () => {
+      const customDays = ['Monday', 'Tuesday', 'Wednesday'];
+      const userConfig: AlgorithmConfig = {
+        timeSlotConfig: {
+          days: customDays,
+        },
+      };
+
+      const result = mergeConfig(userConfig);
+
+      expect(result.timeSlotConfig.days).toEqual(customDays);
+    });
+
+    it('should merge complete timeSlotConfig', () => {
+      const userConfig: AlgorithmConfig = {
+        timeSlotConfig: {
+          pagi: {
+            startTime: '08:00',
+            endTime: '16:00',
+            slotDuration: 60,
+          },
+          sore: {
+            startTime: '16:00',
+            endTime: '20:00',
+            slotDuration: 50,
+          },
+          days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+        },
+      };
+
+      const result = mergeConfig(userConfig);
+
+      expect(result.timeSlotConfig.pagi.startTime).toBe('08:00');
+      expect(result.timeSlotConfig.pagi.endTime).toBe('16:00');
+      expect(result.timeSlotConfig.pagi.slotDuration).toBe(60);
+      expect(result.timeSlotConfig.sore.startTime).toBe('16:00');
+      expect(result.timeSlotConfig.sore.endTime).toBe('20:00');
+      expect(result.timeSlotConfig.days).toHaveLength(5);
+    });
+
+    it('should preserve customTimeSlots when provided', () => {
+      const customSlots = {
+        pagi: [
+          { day: 'Monday', startTime: '08:00', endTime: '10:00', period: 1 },
+        ],
+        sore: [
+          { day: 'Monday', startTime: '18:00', endTime: '20:00', period: 1 },
+        ],
+      };
+
+      const userConfig: AlgorithmConfig = {
+        customTimeSlots: customSlots,
+      };
+
+      const result = mergeConfig(userConfig);
+
+      expect(result.customTimeSlots).toEqual(customSlots);
+    });
+
+    it('should handle both timeSlotConfig and customTimeSlots', () => {
+      const userConfig: AlgorithmConfig = {
+        timeSlotConfig: {
+          pagi: { startTime: '08:00' },
+        },
+        customTimeSlots: {
+          pagi: [
+            { day: 'Monday', startTime: '09:00', endTime: '11:00', period: 1 },
+          ],
+        },
+      };
+
+      const result = mergeConfig(userConfig);
+
+      // Both should be present
+      expect(result.timeSlotConfig.pagi.startTime).toBe('08:00');
+      expect(result.customTimeSlots).toBeDefined();
+      expect(result.customTimeSlots?.pagi).toHaveLength(1);
+    });
+
+    it('should not mutate default time slot config', () => {
+      const originalDefault = JSON.parse(JSON.stringify(DEFAULT_ALGORITHM_CONFIG.timeSlotConfig));
+
+      mergeConfig({
+        timeSlotConfig: {
+          pagi: { startTime: '99:99' },
+        },
+      });
+
+      expect(DEFAULT_ALGORITHM_CONFIG.timeSlotConfig).toEqual(originalDefault);
+    });
+  });
 });

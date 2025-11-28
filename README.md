@@ -2,6 +2,30 @@
 
 A powerful, modular solver for **University Course Timetabling Problem (UCTP)** using **Simulated Annealing** algorithm with TypeScript.
 
+[![npm version](https://img.shields.io/npm/v/timetable-sa.svg)](https://www.npmjs.com/package/timetable-sa)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## 🎉 What's New in v1.1.0
+
+**Flexible Time Slot Configuration** - Customize class schedules to match your institution's needs!
+
+```typescript
+// Simple: Change morning start time to 8 AM
+const solver = new SimulatedAnnealing(rooms, lecturers, classes, {
+  timeSlotConfig: {
+    pagi: { startTime: "08:00" }
+  }
+});
+```
+
+Two modes available:
+- **Merge Mode** - Override specific settings, keep the rest as defaults
+- **Full Custom Mode** - Provide completely custom time slots
+
+📚 [See full documentation](docs/TIMESLOT_CONFIG.md) | 📦 [npm package](https://www.npmjs.com/package/timetable-sa)
+
+---
+
 ## Features
 
 - **Advanced Simulated Annealing** with two-phase optimization (hard constraints → soft constraints)
@@ -12,6 +36,7 @@ A powerful, modular solver for **University Course Timetabling Problem (UCTP)** 
 - **Fully typed** with TypeScript for excellent IDE support
 - **Modular architecture** - use individual components as needed
 - **Configurable** - customize algorithm parameters and constraint weights
+- **⭐ NEW in v1.1.0: Flexible Time Slot Configuration** - customize class schedules with partial or full override modes
 
 ## Installation
 
@@ -89,6 +114,116 @@ const solver = new SimulatedAnnealing(
 
 const solution = solver.solve();
 ```
+
+### ⭐ NEW: Configurable Time Slots (v1.1.0)
+
+Customize class schedules to match your institution's specific needs!
+
+#### Mode 1: Merge with Defaults (Partial Override)
+
+Override only specific settings while keeping the rest as defaults:
+
+```typescript
+import { SimulatedAnnealing, loadDataFromExcel } from 'timetable-sa';
+
+const data = loadDataFromExcel('./timetable-data.xlsx');
+
+const solver = new SimulatedAnnealing(
+  data.rooms,
+  data.lecturers,
+  data.classes,
+  {
+    timeSlotConfig: {
+      pagi: {
+        startTime: "08:00",  // Change morning start time
+        endTime: "16:00",    // Change morning end time
+        slotDuration: 60     // 60-minute slots instead of 50
+      },
+      sore: {
+        startTime: "16:00",  // Evening starts at 4 PM
+        endTime: "20:00"     // Ends at 8 PM
+        // slotDuration uses default (50 minutes)
+      },
+      days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]  // 5-day week
+    }
+  }
+);
+
+const solution = solver.solve();
+```
+
+#### Mode 2: Full Custom Override
+
+Provide completely custom time slots:
+
+```typescript
+import { SimulatedAnnealing, loadDataFromExcel } from 'timetable-sa';
+import type { TimeSlot } from 'timetable-sa';
+
+const data = loadDataFromExcel('./timetable-data.xlsx');
+
+// Define custom time slots (e.g., 90-minute blocks)
+const customPagiSlots: TimeSlot[] = [
+  { day: "Monday", startTime: "08:00", endTime: "09:30", period: 1 },
+  { day: "Monday", startTime: "09:45", endTime: "11:15", period: 2 },
+  { day: "Monday", startTime: "11:30", endTime: "13:00", period: 3 },
+  // ... more slots
+];
+
+const solver = new SimulatedAnnealing(
+  data.rooms,
+  data.lecturers,
+  data.classes,
+  {
+    customTimeSlots: {
+      pagi: customPagiSlots,  // Use your custom slots
+      // sore: customSoreSlots (optional)
+    }
+  }
+);
+
+const solution = solver.solve();
+```
+
+#### Common Use Cases
+
+**8 AM Start (instead of 7:30 AM):**
+```typescript
+timeSlotConfig: {
+  pagi: { startTime: "08:00" }
+}
+```
+
+**4-Day Work Week:**
+```typescript
+timeSlotConfig: {
+  days: ["Monday", "Tuesday", "Wednesday", "Thursday"]
+}
+```
+
+**Block Scheduling (2-hour classes):**
+```typescript
+timeSlotConfig: {
+  pagi: {
+    startTime: "09:00",
+    endTime: "17:00",
+    slotDuration: 120  // 2-hour blocks
+  }
+}
+```
+
+**Evening Programs Only:**
+```typescript
+timeSlotConfig: {
+  sore: {
+    startTime: "17:00",
+    endTime: "22:00",
+    slotDuration: 90
+  }
+}
+```
+
+> 📚 **Full Documentation**: See [docs/TIMESLOT_CONFIG.md](docs/TIMESLOT_CONFIG.md) for complete guide and examples.
 
 ### Using JSON Input
 
@@ -244,6 +379,10 @@ interface AlgorithmConfig {
   maxReheats?: number;
   hardConstraintWeight?: number;
   softConstraintWeights?: SoftConstraintWeights;
+
+  // ⭐ NEW in v1.1.0
+  timeSlotConfig?: TimeSlotConfig;      // Mode 1: Merge with defaults
+  customTimeSlots?: CustomTimeSlots;    // Mode 2: Full custom override
 }
 
 interface SoftConstraintWeights {
@@ -255,6 +394,33 @@ interface SoftConstraintWeights {
   eveningClassPriority?: number;
   labRequirement?: number;
   overflowPenalty?: number;
+}
+
+// ⭐ NEW in v1.1.0
+interface TimeSlotConfig {
+  pagi?: {
+    startTime?: string;      // Format: "HH:MM" (e.g., "08:00")
+    endTime?: string;        // Format: "HH:MM" (e.g., "17:00")
+    slotDuration?: number;   // Minutes per slot (e.g., 50, 60, 90)
+  };
+  sore?: {
+    startTime?: string;
+    endTime?: string;
+    slotDuration?: number;
+  };
+  days?: string[];  // e.g., ["Monday", "Tuesday", "Wednesday"]
+}
+
+interface CustomTimeSlots {
+  pagi?: TimeSlot[];
+  sore?: TimeSlot[];
+}
+
+interface TimeSlot {
+  day: string;        // "Monday", "Tuesday", etc.
+  startTime: string;  // Format: "HH:MM"
+  endTime: string;    // Format: "HH:MM"
+  period: number;     // Period number (1, 2, 3, ...)
 }
 ```
 
@@ -273,7 +439,12 @@ console.log(DEFAULT_ALGORITHM_CONFIG);
 //   reheatingFactor: 100,
 //   maxReheats: 7,
 //   hardConstraintWeight: 100000,
-//   softConstraintWeights: { ... }
+//   softConstraintWeights: { ... },
+//   timeSlotConfig: {
+//     pagi: { startTime: "07:30", endTime: "17:00", slotDuration: 50 },
+//     sore: { startTime: "15:30", endTime: "21:00", slotDuration: 50 },
+//     days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+//   }
 // }
 ```
 
@@ -302,11 +473,12 @@ When stuck in local minima (no improvement for N iterations), the algorithm incr
 
 ## Examples
 
-Check the `src/examples/` directory for complete examples:
+Check the `examples/` directory for complete examples:
 
 - `basic-usage.ts` - Simple usage with Excel input
 - `custom-config.ts` - Customizing algorithm parameters
 - `json-usage.ts` - Using JSON input
+- **⭐ NEW:** `custom-timeslots.ts` - Time slot configuration examples (v1.1.0)
 
 Run examples:
 
@@ -349,6 +521,11 @@ import type {
   Solution,
   AlgorithmConfig,
   TimetableInput,
+  // ⭐ NEW in v1.1.0
+  TimeSlot,
+  TimeSlotConfig,
+  CustomTimeSlots,
+  TimeSlotGenerationConfig,
 } from 'timetable-sa';
 ```
 

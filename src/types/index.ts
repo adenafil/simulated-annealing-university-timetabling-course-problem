@@ -47,7 +47,7 @@ export interface TimeSlot {
 export interface ScheduleEntry {
   classId: string;
   className: string;
-  class: string;
+  class: string | string[];
   prodi: string;
   lecturers: string[];
   room: string;
@@ -110,6 +110,32 @@ export interface PrayerTime {
 }
 
 /**
+ * Time slot generation configuration for merge mode
+ */
+export interface TimeSlotGenerationConfig {
+  startTime?: string;
+  endTime?: string;
+  slotDuration?: number;
+}
+
+/**
+ * Time slot configuration (merge with defaults or full custom)
+ */
+export interface TimeSlotConfig {
+  pagi?: TimeSlotGenerationConfig;
+  sore?: TimeSlotGenerationConfig;
+  days?: string[];
+}
+
+/**
+ * Custom time slots (full override mode)
+ */
+export interface CustomTimeSlots {
+  pagi?: TimeSlot[];
+  sore?: TimeSlot[];
+}
+
+/**
  * Algorithm configuration options
  */
 export interface AlgorithmConfig {
@@ -122,6 +148,12 @@ export interface AlgorithmConfig {
   maxReheats?: number;
   hardConstraintWeight?: number;
   softConstraintWeights?: SoftConstraintWeights;
+
+  // Mode 1: Merge with defaults (partial override)
+  timeSlotConfig?: TimeSlotConfig;
+
+  // Mode 2: Full custom (100% override, ignore defaults)
+  customTimeSlots?: CustomTimeSlots;
 }
 
 export interface SoftConstraintWeights {

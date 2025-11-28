@@ -25,13 +25,18 @@ import {
   TIME_SLOTS_SORE,
   LAB_ROOMS,
   EXCLUSIVE_ROOMS,
+  initializeTimeSlots,
+  setCustomTimeSlots,
 } from "../constants/index.js";
+import fs from "fs";
+import path from "path";
 import {
   calculateEndTime,
   timeToMinutes,
   isValidFridayStartTime,
   isStartingDuringPrayerTime,
   getAvailableRooms,
+  hasClassOverlap,
 } from "../utils/index.js";
 import { mergeConfig } from "./config.js";
 
@@ -80,6 +85,28 @@ export class SimulatedAnnealing {
     this.maxReheats = mergedConfig.maxReheats;
     this.hardConstraintWeight = mergedConfig.hardConstraintWeight;
     this.softConstraintWeights = mergedConfig.softConstraintWeights;
+
+    // Initialize time slots based on configuration
+    // Priority: customTimeSlots > timeSlotConfig > defaults
+    if (mergedConfig.customTimeSlots) {
+      // Mode 2: Full custom override
+      console.log("🕐 Using custom time slots (full override mode)");
+      setCustomTimeSlots(
+        mergedConfig.customTimeSlots.pagi,
+        mergedConfig.customTimeSlots.sore
+      );
+    } else if (config?.timeSlotConfig) {
+      // Mode 1: Merge with defaults
+      console.log("🕐 Using configurable time slots (merge mode)");
+      initializeTimeSlots(
+        mergedConfig.timeSlotConfig.pagi,
+        mergedConfig.timeSlotConfig.sore,
+        mergedConfig.timeSlotConfig.days
+      );
+    } else {
+      // Use defaults (already initialized by time-slots.ts)
+      console.log("🕐 Using default time slots");
+    }
   }
 
   /**
@@ -87,7 +114,8 @@ export class SimulatedAnnealing {
    */
   private wouldCauseProdiConflict(schedule: ScheduleEntry[], entry: ScheduleEntry): boolean {
     for (const existing of schedule) {
-      if (existing.prodi === entry.prodi && existing.timeSlot.day === entry.timeSlot.day) {
+      // Check if same prodi, same day, and overlapping classes
+      if (existing.prodi === entry.prodi && existing.timeSlot.day === entry.timeSlot.day && hasClassOverlap(existing.class, entry.class)) {
         const calc1 = calculateEndTime(existing.timeSlot.startTime, existing.sks, existing.timeSlot.day);
         const calc2 = calculateEndTime(entry.timeSlot.startTime, entry.sks, entry.timeSlot.day);
 
@@ -96,6 +124,7 @@ export class SimulatedAnnealing {
         const start2 = timeToMinutes(entry.timeSlot.startTime);
         const end2 = timeToMinutes(calc2.endTime);
 
+        // Check if time overlaps
         if (start1 < end2 && start2 < end1) {
           return true;
         }
@@ -142,17 +171,33 @@ export class SimulatedAnnealing {
    */
   private generateInitialSolution(): Solution {
     const schedule: ScheduleEntry[] = [];
+    const skippedClasses: { reason: string; class: string; code: string }[] = [];
 
+    let i = 0;
     for (const classReq of this.classes) {
-      if (!classReq.Kode_Matakuliah) continue;
+      if (!classReq.Kode_Matakuliah) {
+        skippedClasses.push({
+          reason: 'Missing course code',
+          class: classReq.Mata_Kuliah || 'Unknown',
+          code: 'N/A',
+        });
+        continue;
+      }
 
-      const lecturers: string[] = [];
+      const lecturers: string[] = [];      
       if (classReq.Kode_Dosen1) lecturers.push(classReq.Kode_Dosen1);
       if (classReq.Kode_Dosen2) lecturers.push(classReq.Kode_Dosen2);
       if (classReq.Kode_Dosen_Prodi_Lain1) lecturers.push(classReq.Kode_Dosen_Prodi_Lain1);
       if (classReq.Kode_Dosen_Prodi_Lain2) lecturers.push(classReq.Kode_Dosen_Prodi_Lain2);
 
-      if (lecturers.length === 0) continue;
+      if (lecturers.length === 0) {
+        skippedClasses.push({
+          reason: 'No lecturers assigned',
+          class: classReq.Mata_Kuliah || 'Unknown',
+          code: classReq.Kode_Matakuliah,
+        });
+        continue;
+      }      
 
       const participants = classReq.Peserta || 30;
       const needsLab = classReq.should_on_the_lab?.toLowerCase() === "yes";
@@ -165,9 +210,10 @@ export class SimulatedAnnealing {
       if (classType === "sore") {
         availableTimeSlots = TIME_SLOTS_SORE.slice().sort((a, b) => {
           const aMinutes = timeToMinutes(a.startTime);
-          const bMinutes = timeToMinutes(b.startTime);
+          const bMinutes = timeToMinutes(b.startTime);          
           return aMinutes - bMinutes;
         });
+
       } else {
         availableTimeSlots = TIME_SLOTS_PAGI.slice();
       }
@@ -188,7 +234,14 @@ export class SimulatedAnnealing {
         return !isStartingDuringPrayerTime(slot.startTime);
       });
 
-      if (availableTimeSlots.length === 0) continue;
+      if (availableTimeSlots.length === 0) {
+        skippedClasses.push({
+          reason: 'No valid time slots available (after filtering)',
+          class: classReq.Mata_Kuliah || 'Unknown',
+          code: classReq.Kode_Matakuliah,
+        });
+        continue;
+      }
 
       let placed = false;
       for (const timeSlot of availableTimeSlots) {
@@ -205,8 +258,15 @@ export class SimulatedAnnealing {
 
         if (roomCodes.length > 0) {
           const selectedRoom = roomCodes[0]!;
-          const prayerTimeCalc = calculateEndTime(timeSlot.startTime, classReq.SKS || 3, timeSlot.day);
+          const sks = classReq.SKS || 3;
+          const prayerTimeCalc = calculateEndTime(timeSlot.startTime, sks, timeSlot.day);
           const isOverflow = !needsLab && LAB_ROOMS.includes(selectedRoom);
+
+          // Create time slot with correct end time based on SKS
+          const actualTimeSlot: TimeSlot = {
+            ...timeSlot,
+            endTime: prayerTimeCalc.endTime,  // Use calculated end time based on SKS
+          };
 
           const tempEntry: ScheduleEntry = {
             classId: classReq.Kode_Matakuliah,
@@ -215,8 +275,8 @@ export class SimulatedAnnealing {
             prodi,
             lecturers,
             room: selectedRoom,
-            timeSlot: timeSlot,
-            sks: classReq.SKS || 3,
+            timeSlot: actualTimeSlot,  // Use updated time slot with correct endTime
+            sks,
             needsLab,
             participants,
             classType,
@@ -239,8 +299,61 @@ export class SimulatedAnnealing {
       }
 
       if (!placed) {
+        console.log(courseName, classReq); 
+        
+        skippedClasses.push({
+          reason: 'Could not find valid room/time slot combination',
+          class: courseName,
+          code: classReq.Kode_Matakuliah,
+        });
         console.warn(`⚠️  Could not place class: ${classReq.Kode_Matakuliah} - ${courseName}`);
       }
+    }
+
+    // Log summary of skipped classes
+    if (skippedClasses.length > 0) {
+      console.log(`\n⚠️  SCHEDULING SUMMARY:`);
+      console.log(`   Total classes to schedule: ${this.classes.length}`);
+      console.log(`   Successfully scheduled: ${schedule.length}`);
+      console.log(`   Skipped/Failed: ${skippedClasses.length}\n`);
+
+      // Group by reason
+      const byReason: { [key: string]: typeof skippedClasses } = {};
+      for (const skip of skippedClasses) {
+        if (!byReason[skip.reason]) {
+          byReason[skip.reason] = [];
+        }
+        byReason[skip.reason]!.push(skip);
+      }
+
+      console.log(`📊 Breakdown by reason:`);
+      for (const [reason, classes] of Object.entries(byReason)) {
+        console.log(`\n   ${reason}: ${classes.length} classes`);
+        classes.slice(0, 5).forEach((c) => {
+          console.log(`     - ${c.code}: ${c.class}`);
+        });
+        if (classes.length > 5) {
+          console.log(`     ... and ${classes.length - 5} more`);
+        }
+      }
+      console.log();
+
+      // Save to file for detailed review
+      const logPath = path.join(process.cwd(), 'unscheduled-classes.json');
+      fs.writeFileSync(logPath, JSON.stringify({
+        summary: {
+          totalClasses: this.classes.length,
+          scheduled: schedule.length,
+          unscheduled: skippedClasses.length,
+        },
+        skippedClasses,
+        byReason: Object.entries(byReason).map(([reason, classes]) => ({
+          reason,
+          count: classes.length,
+          classes,
+        })),
+      }, null, 2));
+      console.log(`📝 Detailed report saved to: ${logPath}\n`);
     }
 
     const fitness = this.calculateFitness(schedule);
@@ -319,6 +432,11 @@ export class SimulatedAnnealing {
   private generateNeighborMove(solution: Solution): Solution {
     const newSchedule = JSON.parse(JSON.stringify(solution.schedule)) as ScheduleEntry[];
 
+    // Return unchanged if no schedule entries
+    if (newSchedule.length === 0) {
+      return solution;
+    }
+
     // Prioritize fixing hard violations
     const violatingIndices = this.getViolatingClassIndices(newSchedule);
     let randomIndex: number;
@@ -383,8 +501,12 @@ export class SimulatedAnnealing {
           newSlot = availableTimeSlots[Math.floor(Math.random() * availableTimeSlots.length)]!;
         }
 
-        entry.timeSlot = newSlot;
+        // Calculate actual end time based on SKS
         const calc = calculateEndTime(newSlot.startTime, entry.sks, newSlot.day);
+        entry.timeSlot = {
+          ...newSlot,
+          endTime: calc.endTime,  // Use calculated end time
+        };
         entry.prayerTimeAdded = calc.prayerTimeAdded;
       }
     } else {
@@ -475,13 +597,20 @@ export class SimulatedAnnealing {
     if (swapType < 0.33) {
       // SWAP TIMESLOT ONLY
       const tempTimeSlot = { ...entry1.timeSlot };
-      entry1.timeSlot = { ...entry2.timeSlot };
-      entry2.timeSlot = tempTimeSlot;
 
-      const calc1 = calculateEndTime(entry1.timeSlot.startTime, entry1.sks, entry1.timeSlot.day);
+      // Swap and recalculate end times based on each class's SKS
+      const calc1 = calculateEndTime(entry2.timeSlot.startTime, entry1.sks, entry2.timeSlot.day);
+      entry1.timeSlot = {
+        ...entry2.timeSlot,
+        endTime: calc1.endTime,  // Recalculate for entry1's SKS
+      };
       entry1.prayerTimeAdded = calc1.prayerTimeAdded;
 
-      const calc2 = calculateEndTime(entry2.timeSlot.startTime, entry2.sks, entry2.timeSlot.day);
+      const calc2 = calculateEndTime(tempTimeSlot.startTime, entry2.sks, tempTimeSlot.day);
+      entry2.timeSlot = {
+        ...tempTimeSlot,
+        endTime: calc2.endTime,  // Recalculate for entry2's SKS
+      };
       entry2.prayerTimeAdded = calc2.prayerTimeAdded;
     } else if (swapType < 0.66) {
       // SWAP ROOM ONLY
@@ -495,25 +624,37 @@ export class SimulatedAnnealing {
       } else {
         // Fall back to timeslot swap
         const tempTimeSlot = { ...entry1.timeSlot };
-        entry1.timeSlot = { ...entry2.timeSlot };
-        entry2.timeSlot = tempTimeSlot;
 
-        const calc1 = calculateEndTime(entry1.timeSlot.startTime, entry1.sks, entry1.timeSlot.day);
+        const calc1 = calculateEndTime(entry2.timeSlot.startTime, entry1.sks, entry2.timeSlot.day);
+        entry1.timeSlot = {
+          ...entry2.timeSlot,
+          endTime: calc1.endTime,
+        };
         entry1.prayerTimeAdded = calc1.prayerTimeAdded;
 
-        const calc2 = calculateEndTime(entry2.timeSlot.startTime, entry2.sks, entry2.timeSlot.day);
+        const calc2 = calculateEndTime(tempTimeSlot.startTime, entry2.sks, tempTimeSlot.day);
+        entry2.timeSlot = {
+          ...tempTimeSlot,
+          endTime: calc2.endTime,
+        };
         entry2.prayerTimeAdded = calc2.prayerTimeAdded;
       }
     } else {
       // SWAP BOTH
       const tempTimeSlot = { ...entry1.timeSlot };
-      entry1.timeSlot = { ...entry2.timeSlot };
-      entry2.timeSlot = tempTimeSlot;
 
-      const calc1 = calculateEndTime(entry1.timeSlot.startTime, entry1.sks, entry1.timeSlot.day);
+      const calc1 = calculateEndTime(entry2.timeSlot.startTime, entry1.sks, entry2.timeSlot.day);
+      entry1.timeSlot = {
+        ...entry2.timeSlot,
+        endTime: calc1.endTime,
+      };
       entry1.prayerTimeAdded = calc1.prayerTimeAdded;
 
-      const calc2 = calculateEndTime(entry2.timeSlot.startTime, entry2.sks, entry2.timeSlot.day);
+      const calc2 = calculateEndTime(tempTimeSlot.startTime, entry2.sks, tempTimeSlot.day);
+      entry2.timeSlot = {
+        ...tempTimeSlot,
+        endTime: calc2.endTime,
+      };
       entry2.prayerTimeAdded = calc2.prayerTimeAdded;
 
       if (canSwapRooms) {
@@ -639,6 +780,7 @@ export class SimulatedAnnealing {
 
     let currentSolution = this.generateInitialSolution();
     let bestSolution = JSON.parse(JSON.stringify(currentSolution));
+      
 
     let temperature = this.initialTemperature;
     let iteration = 0;

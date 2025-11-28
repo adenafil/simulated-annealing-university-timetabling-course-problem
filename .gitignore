@@ -7,3 +7,5 @@ dist/
 out/
 .vscode/
 .idea/
+data_uisi.xlsx
+/src/examples/result

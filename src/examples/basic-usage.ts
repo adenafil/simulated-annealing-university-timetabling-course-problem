@@ -3,6 +3,7 @@
  */
 
 import { SimulatedAnnealing, loadDataFromExcel } from "../index.js";
+import fs from "fs";
 
 async function main() {
   console.log("=".repeat(50));
@@ -10,7 +11,7 @@ async function main() {
   console.log("=".repeat(50));
 
   // Load data from Excel file
-  const dataPath = process.argv[2] || "./data/timetable-data.xlsx";
+  const dataPath = process.argv[2] || "/home/aikano/ade-belajar/timetable-sa/data_uisi.xlsx";
   console.log(`\nLoading data from: ${dataPath}`);
 
   const { rooms, lecturers, classes } = loadDataFromExcel(dataPath);
@@ -57,6 +58,10 @@ async function main() {
     console.log(`     Time: ${entry.timeSlot.day} ${entry.timeSlot.startTime}`);
     console.log(`     Lecturers: ${entry.lecturers.join(", ")}`);
   }
+
+  // save solution on out folder
+  fs.writeFileSync("/home/aikano/ade-belajar/timetable-sa/src/examples/result/solution.json", JSON.stringify(solution, null, 2));
+  console.log("\n✅ Solution saved to /home/aikano/ade-belajar/timetable-sa/src/examples/result/solution.json");
 
   console.log("\n" + "=".repeat(50));
 }
