@@ -5,7 +5,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { LoggingConfig, LogLevel, LogOutput } from "../types";
+import { LoggingConfig, LogLevel, LogOutput } from "../types/index.js";
 
 export class Logger {
   private config: Required<LoggingConfig>;
@@ -62,9 +62,10 @@ export class Logger {
       return false;
     }
 
-    return (
-      this.logLevelPriority[level] >= this.logLevelPriority[this.config.level]
-    );
+    const currentPriority = this.logLevelPriority[level];
+    const configPriority = this.logLevelPriority[this.config.level];
+
+    return currentPriority !== undefined && configPriority !== undefined && currentPriority >= configPriority;
   }
 
   private formatMessage(level: LogLevel, message: string, data?: any): string {

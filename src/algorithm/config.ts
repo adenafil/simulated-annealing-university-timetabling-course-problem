@@ -105,12 +105,12 @@ export function mergeConfig(userConfig?: AlgorithmConfig): typeof DEFAULT_ALGORI
     hardConstraints: {
       ...DEFAULT_HARD_CONSTRAINTS_CONFIG,
       ...userConfig?.constraints?.hardConstraints,
-    },
+    } as Required<HardConstraintsConfig>,
     softConstraints: {
       ...DEFAULT_SOFT_CONSTRAINTS_CONFIG,
       ...userConfig?.constraints?.softConstraints,
-    },
-    customConstraints: userConfig?.constraints?.customConstraints || [],
+    } as Required<SoftConstraintsConfig>,
+    customConstraints: (userConfig?.constraints?.customConstraints || []) as typeof DEFAULT_ALGORITHM_CONFIG.constraints.customConstraints,
   };
 
   // Merge logging configuration
